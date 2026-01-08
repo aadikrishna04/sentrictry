@@ -15,7 +15,7 @@ from sentric import SentricMonitor
 # CONFIG
 # -------------------------
 
-OPENAI_API_KEY = "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"  # TODO: Replace with your OpenAI API key
+OPENAI_API_KEY = ""  # TODO: Replace with your OpenAI API key
 LLM_MODEL = "gpt-5-mini"  # or any supported model
 START_URL = "https://www.google.com"
 
