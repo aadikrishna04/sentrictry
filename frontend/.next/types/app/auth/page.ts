@@ -1,4 +1,4 @@
-// File: /Users/aadikrishna/Desktop/Sentric/frontend/src/app/auth/page.tsx
+// File: /Users/rahulmuppavarapu/sentrictry/frontend/src/app/auth/page.tsx
 import * as entry from '../../../../src/app/auth/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

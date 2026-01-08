@@ -183,6 +183,7 @@ class SentricMonitor:
         selector: Optional[str] = None,
         url: Optional[str] = None,
         value: Optional[str] = None,
+        **kwargs,
     ) -> None:
         """Log an agent action."""
         payload = {"kind": kind}
@@ -190,10 +191,16 @@ class SentricMonitor:
             payload["selector"] = selector
         if url:
             payload["url"] = url
+            self._current_url = url
         elif self._current_url:
             payload["url"] = self._current_url
         if value:
             payload["value"] = value
+        
+        # Include any additional parameters
+        for key, val in kwargs.items():
+            if val is not None:
+                payload[key] = val
 
         self._send_event("action", payload)
 
@@ -246,17 +253,20 @@ class SentricMonitor:
                 # Log thinking/reasoning
                 if hasattr(output, "current_state") and output.current_state:
                     state = output.current_state
-                    thoughts = []
-                    if hasattr(state, "evaluation_previous_goal"):
-                        thoughts.append(f"Evaluation: {state.evaluation_previous_goal}")
-                    if hasattr(state, "memory"):
-                        thoughts.append(f"Memory: {state.memory}")
-                    if hasattr(state, "next_goal"):
-                        thoughts.append(f"Next goal: {state.next_goal}")
-                    if thoughts:
-                        self.log_reasoning(" | ".join(thoughts))
+                    reasoning_parts = []
+                    
+                    # Build comprehensive reasoning message
+                    if hasattr(state, "evaluation_previous_goal") and state.evaluation_previous_goal:
+                        reasoning_parts.append(f"Evaluation: {state.evaluation_previous_goal}")
+                    if hasattr(state, "memory") and state.memory:
+                        reasoning_parts.append(f"Memory: {state.memory}")
+                    if hasattr(state, "next_goal") and state.next_goal:
+                        reasoning_parts.append(f"Next goal: {state.next_goal}")
+                    
+                    if reasoning_parts:
+                        self.log_reasoning("\n".join(reasoning_parts))
 
-                # Log the action being taken
+                # Log the action being taken with full details
                 if hasattr(output, "action") and output.action:
                     action = output.action
                     for action_item in action:
@@ -272,18 +282,37 @@ class SentricMonitor:
                                     if isinstance(action_params, dict)
                                     else {}
                                 )
-                                self.log_action(
-                                    kind=action_name,
-                                    selector=(
-                                        str(params.get("index", "")) if params else None
-                                    ),
-                                    url=params.get("url") if params else None,
-                                    value=params.get("text") if params else None,
-                                )
-                                if action_name == "go_to_url" and params:
-                                    self._current_url = params.get(
-                                        "url", self._current_url
-                                    )
+                                
+                                # Extract all relevant parameters
+                                selector = None
+                                if "selector" in params:
+                                    selector = params["selector"]
+                                elif "index" in params:
+                                    selector = f"index:{params['index']}"
+                                
+                                url = params.get("url")
+                                value = params.get("text") or params.get("value")
+                                
+                                # Create detailed action payload
+                                action_payload = {"kind": action_name}
+                                if selector:
+                                    action_payload["selector"] = selector
+                                if url:
+                                    action_payload["url"] = url
+                                    self._current_url = url
+                                elif self._current_url:
+                                    action_payload["url"] = self._current_url
+                                if value:
+                                    action_payload["value"] = value
+                                
+                                # Include additional params for context
+                                if params:
+                                    # Include other relevant params
+                                    for key in ["new_tab", "clear", "down", "pages"]:
+                                        if key in params:
+                                            action_payload[key] = params[key]
+                                
+                                self._send_event("action", action_payload)
 
             # Call original callback if exists
             if original_callback:

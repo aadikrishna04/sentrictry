@@ -285,43 +285,84 @@ async def post_event(run_id: str, event: Event, auth: dict = Depends(verify_api_
 
 @app.websocket("/ws/{run_id}")
 async def websocket_endpoint(websocket: WebSocket, run_id: str):
-    # Get API key from query params or headers
-    api_key = None
+    # Get auth token/key from query params or headers
+    auth_token = None
     query_params = dict(websocket.query_params)
     if "api_key" in query_params:
-        api_key = query_params["api_key"]
+        auth_token = query_params["api_key"]
+    elif "token" in query_params:
+        auth_token = query_params["token"]
     else:
         # Try to get from headers (some WebSocket clients support this)
         headers = dict(websocket.headers)
         auth_header = headers.get("authorization") or headers.get("Authorization")
         if auth_header:
             parts = auth_header.split(" ")
-            api_key = parts[1] if len(parts) == 2 else parts[0]
+            auth_token = parts[1] if len(parts) == 2 else parts[0]
 
-    if not api_key:
-        await websocket.close(code=1008, reason="Missing API key")
+    if not auth_token:
+        await websocket.close(code=1008, reason="Missing authentication")
         return
 
-    # Verify API key and run ownership
+    # Try JWT token first (for dashboard users), then API key (for agents)
+    user_id = None
+    project_id = None
+    
+    # Check if it's a JWT token
+    try:
+        payload = jwt.decode(auth_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+    except JWTError:
+        user_id = None
+
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM api_keys WHERE key_hash = ?", (api_key,)
-        )
-        api_key_row = await cursor.fetchone()
+        
+        if user_id:
+            # JWT token - verify user and get their projects
+            cursor = await db.execute(
+                "SELECT id FROM users WHERE id = ?", (user_id,)
+            )
+            user = await cursor.fetchone()
+            if not user:
+                await websocket.close(code=1008, reason="Invalid user token")
+                return
+            
+            # Verify user owns the run (through project ownership)
+            cursor = await db.execute(
+                """
+                SELECT r.project_id FROM runs r
+                JOIN projects p ON r.project_id = p.id
+                WHERE r.id = ? AND p.user_id = ?
+                """,
+                (run_id, user_id),
+            )
+            run_project = await cursor.fetchone()
+            if not run_project:
+                await websocket.close(code=1008, reason="Run not found or access denied")
+                return
+            project_id = run_project["project_id"]
+        else:
+            # API key - verify API key and run ownership
+            cursor = await db.execute(
+                "SELECT * FROM api_keys WHERE key_hash = ?", (auth_token,)
+            )
+            api_key_row = await cursor.fetchone()
 
-        if not api_key_row:
-            await websocket.close(code=1008, reason="Invalid API key")
-            return
+            if not api_key_row:
+                await websocket.close(code=1008, reason="Invalid API key")
+                return
 
-        # Verify run belongs to API key's project
-        cursor = await db.execute(
-            "SELECT id FROM runs WHERE id = ? AND project_id = ?",
-            (run_id, api_key_row["project_id"]),
-        )
-        if not await cursor.fetchone():
-            await websocket.close(code=1008, reason="Run not found or access denied")
-            return
+            project_id = api_key_row["project_id"]
+            
+            # Verify run belongs to API key's project
+            cursor = await db.execute(
+                "SELECT id FROM runs WHERE id = ? AND project_id = ?",
+                (run_id, project_id),
+            )
+            if not await cursor.fetchone():
+                await websocket.close(code=1008, reason="Run not found or access denied")
+                return
 
     await websocket.accept()
 

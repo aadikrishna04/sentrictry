@@ -51,9 +51,13 @@ export default function RunDetailPage() {
     }
     fetchRun();
 
-    // Connect WebSocket for live updates
-    const ws = new WebSocket(`ws://localhost:8000/ws/${runId}`);
+    // Connect WebSocket for live updates with JWT token
+    const ws = new WebSocket(`ws://localhost:8000/ws/${runId}?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("WebSocket connected for live updates");
+    };
 
     ws.onmessage = (event) => {
       const newEvent = JSON.parse(event.data);
@@ -63,10 +67,20 @@ export default function RunDetailPage() {
       });
     };
 
-    ws.onerror = () => console.log("WebSocket error - live updates disabled");
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
 
-    return () => ws.close();
-  }, [runId]);
+    ws.onclose = () => {
+      console.log("WebSocket disconnected");
+    };
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [runId, router]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new events arrive
@@ -206,24 +220,56 @@ export default function RunDetailPage() {
                   <div style={styles.eventPayload}>
                     {event.type === "action" ? (
                       <div style={styles.actionContent}>
-                        <span style={styles.actionKind}>
-                          {(event.payload as { kind?: string }).kind}
-                        </span>
-                        {(event.payload as { selector?: string }).selector && (
-                          <code style={styles.actionSelector}>
-                            {(event.payload as { selector?: string }).selector}
-                          </code>
-                        )}
-                        {(event.payload as { url?: string }).url && (
-                          <span style={styles.actionUrl}>
-                            {(event.payload as { url?: string }).url}
+                        <div style={styles.actionHeader}>
+                          <span style={styles.actionKind}>
+                            {(event.payload as { kind?: string }).kind || "action"}
                           </span>
-                        )}
+                        </div>
+                        <div style={styles.actionDetails}>
+                          {(event.payload as { selector?: string }).selector && (
+                            <div style={styles.actionDetailRow}>
+                              <span style={styles.actionLabel}>Selector:</span>
+                              <code style={styles.actionSelector}>
+                                {(event.payload as { selector?: string }).selector}
+                              </code>
+                            </div>
+                          )}
+                          {(event.payload as { url?: string }).url && (
+                            <div style={styles.actionDetailRow}>
+                              <span style={styles.actionLabel}>URL:</span>
+                              <span style={styles.actionUrl}>
+                                {(event.payload as { url?: string }).url}
+                              </span>
+                            </div>
+                          )}
+                          {(event.payload as { value?: string }).value && (
+                            <div style={styles.actionDetailRow}>
+                              <span style={styles.actionLabel}>Value:</span>
+                              <span style={styles.actionValue}>
+                                {(event.payload as { value?: string }).value}
+                              </span>
+                            </div>
+                          )}
+                          {(event.payload as { new_tab?: boolean }).new_tab !== undefined && (
+                            <div style={styles.actionDetailRow}>
+                              <span style={styles.actionLabel}>New Tab:</span>
+                              <span style={styles.actionValue}>
+                                {(event.payload as { new_tab?: boolean }).new_tab ? "Yes" : "No"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : (
-                      <p style={styles.reasoningContent}>
-                        {(event.payload as { content?: string }).content}
-                      </p>
+                      <div style={styles.reasoningContent}>
+                        {((event.payload as { content?: string }).content || "")
+                          .split("\n")
+                          .map((line, idx) => (
+                            <p key={idx} style={styles.reasoningLine}>
+                              {line}
+                            </p>
+                          ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -450,8 +496,11 @@ const styles: { [key: string]: React.CSSProperties } = {
   eventPayload: {},
   actionContent: {
     display: "flex",
-    flexWrap: "wrap" as const,
+    flexDirection: "column" as const,
     gap: "12px",
+  },
+  actionHeader: {
+    display: "flex",
     alignItems: "center",
   },
   actionKind: {
@@ -460,19 +509,51 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: "6px",
     fontWeight: 600,
     fontSize: "13px",
+    textTransform: "capitalize" as const,
+  },
+  actionDetails: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "8px",
+    paddingLeft: "4px",
+  },
+  actionDetailRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "8px",
+    fontSize: "13px",
+  },
+  actionLabel: {
+    color: "var(--text-muted)",
+    fontWeight: 500,
+    minWidth: "60px",
   },
   actionSelector: {
     color: "var(--accent)",
     fontSize: "13px",
+    fontFamily: "JetBrains Mono, monospace",
+    background: "var(--bg-tertiary)",
+    padding: "2px 6px",
+    borderRadius: "4px",
   },
   actionUrl: {
     color: "var(--text-secondary)",
     fontSize: "13px",
+    wordBreak: "break-all" as const,
+  },
+  actionValue: {
+    color: "var(--text-primary)",
+    fontSize: "13px",
+    wordBreak: "break-word" as const,
   },
   reasoningContent: {
     color: "var(--text-primary)",
     fontSize: "14px",
-    lineHeight: 1.6,
+    lineHeight: 1.7,
+  },
+  reasoningLine: {
+    margin: "4px 0",
+    color: "var(--text-primary)",
   },
   securityReport: {},
   summaryCard: {

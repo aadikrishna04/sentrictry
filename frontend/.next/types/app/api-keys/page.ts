@@ -1,4 +1,4 @@
-// File: /Users/aadikrishna/Desktop/Sentric/frontend/src/app/api-keys/page.tsx
+// File: /Users/rahulmuppavarapu/sentrictry/frontend/src/app/api-keys/page.tsx
 import * as entry from '../../../../src/app/api-keys/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
