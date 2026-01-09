@@ -3,6 +3,7 @@
 Security observability layer for AI browser agents.
 """
 
+import asyncio
 import json
 import uuid
 from datetime import datetime
@@ -25,6 +26,9 @@ import bcrypt
 from datetime import datetime, timedelta
 import aiosqlite
 import secrets
+
+# How long before a "running" run is considered stale and marked as failed
+STALE_RUN_TIMEOUT_SECONDS = 30  # 30 seconds without activity = stale
 
 from database import init_db, seed_demo_data, get_db, DB_PATH
 from models import (
@@ -66,11 +70,69 @@ def verify_password(password: str, password_hash: str) -> bool:
 active_connections: dict[str, list[WebSocket]] = {}
 
 
+async def mark_stale_runs_as_failed():
+    """Background task that marks runs without recent activity as failed."""
+    while True:
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                # Find all runs that are "running" but haven't had events in STALE_RUN_TIMEOUT_SECONDS
+                # or don't have any events and were started more than STALE_RUN_TIMEOUT_SECONDS ago
+                cutoff_time = (
+                    datetime.utcnow() - timedelta(seconds=STALE_RUN_TIMEOUT_SECONDS)
+                ).isoformat()
+
+                # Get runs that are still "running"
+                cursor = await db.execute(
+                    "SELECT id, start_time FROM runs WHERE status = 'running'"
+                )
+                running_runs = await cursor.fetchall()
+
+                for run_id, start_time in running_runs:
+                    # Check last event time for this run
+                    cursor = await db.execute(
+                        "SELECT MAX(timestamp) FROM events WHERE run_id = ?", (run_id,)
+                    )
+                    last_event = await cursor.fetchone()
+                    last_activity = (
+                        last_event[0] if last_event and last_event[0] else start_time
+                    )
+
+                    # If last activity is older than cutoff, mark as failed
+                    if last_activity < cutoff_time:
+                        print(
+                            f"[Sentric] Marking stale run {run_id} as failed (no activity since {last_activity})"
+                        )
+                        await db.execute(
+                            "UPDATE runs SET status = 'failed', end_time = ? WHERE id = ?",
+                            (datetime.utcnow().isoformat(), run_id),
+                        )
+                        await db.commit()
+        except Exception as e:
+            print(f"[Sentric] Error in stale run checker: {e}")
+
+        # Check every 5 seconds
+        await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await seed_demo_data()
+
+    # Start background task to mark stale runs as failed
+    stale_run_task = asyncio.create_task(mark_stale_runs_as_failed())
+    print(
+        "[Sentric] Started stale run checker (runs without activity for 60s will be marked as failed)"
+    )
+
     yield
+
+    # Cancel background task on shutdown
+    stale_run_task.cancel()
+    try:
+        await stale_run_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
@@ -285,43 +347,75 @@ async def post_event(run_id: str, event: Event, auth: dict = Depends(verify_api_
 
 @app.websocket("/ws/{run_id}")
 async def websocket_endpoint(websocket: WebSocket, run_id: str):
-    # Get API key from query params or headers
+    # Get API key or JWT token from query params or headers
     api_key = None
+    token = None
     query_params = dict(websocket.query_params)
+
     if "api_key" in query_params:
         api_key = query_params["api_key"]
+    elif "token" in query_params:
+        token = query_params["token"]
     else:
-        # Try to get from headers (some WebSocket clients support this)
+        # Try to get from headers
         headers = dict(websocket.headers)
         auth_header = headers.get("authorization") or headers.get("Authorization")
         if auth_header:
             parts = auth_header.split(" ")
-            api_key = parts[1] if len(parts) == 2 else parts[0]
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+            else:
+                api_key = parts[1] if len(parts) == 2 else parts[0]
 
-    if not api_key:
-        await websocket.close(code=1008, reason="Missing API key")
+    project_id = None
+
+    # Authenticate with API key
+    if api_key:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM api_keys WHERE key_hash = ?", (api_key,)
+            )
+            api_key_row = await cursor.fetchone()
+            if not api_key_row:
+                await websocket.close(code=1008, reason="Invalid API key")
+                return
+            project_id = api_key_row["project_id"]
+
+    # Authenticate with JWT token (for dashboard users)
+    elif token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload.get("sub")
+            if not user_id:
+                await websocket.close(code=1008, reason="Invalid token")
+                return
+
+            async with aiosqlite.connect(DB_PATH) as db:
+                db.row_factory = aiosqlite.Row
+                # Get run and verify user owns it
+                cursor = await db.execute(
+                    """
+                    SELECT r.project_id FROM runs r
+                    JOIN projects p ON r.project_id = p.id
+                    WHERE r.id = ? AND p.user_id = ?
+                    """,
+                    (run_id, user_id),
+                )
+                row = await cursor.fetchone()
+                if not row:
+                    await websocket.close(
+                        code=1008, reason="Run not found or access denied"
+                    )
+                    return
+                project_id = row["project_id"]
+        except JWTError:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+
+    if not project_id:
+        await websocket.close(code=1008, reason="Missing authentication")
         return
-
-    # Verify API key and run ownership
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM api_keys WHERE key_hash = ?", (api_key,)
-        )
-        api_key_row = await cursor.fetchone()
-
-        if not api_key_row:
-            await websocket.close(code=1008, reason="Invalid API key")
-            return
-
-        # Verify run belongs to API key's project
-        cursor = await db.execute(
-            "SELECT id FROM runs WHERE id = ? AND project_id = ?",
-            (run_id, api_key_row["project_id"]),
-        )
-        if not await cursor.fetchone():
-            await websocket.close(code=1008, reason="Run not found or access denied")
-            return
 
     await websocket.accept()
 

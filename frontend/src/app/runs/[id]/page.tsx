@@ -5,8 +5,19 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 interface Event {
-  type: "action" | "reasoning";
+  type: "action" | "reasoning" | "step_start" | "step_reasoning";
   payload: Record<string, unknown>;
+  timestamp: string;
+}
+
+interface StepGroup {
+  stepNumber: number;
+  reasoning?: {
+    evaluation?: string;
+    memory?: string;
+    next_goal?: string;
+  };
+  actions: Event[];
   timestamp: string;
 }
 
@@ -52,18 +63,37 @@ export default function RunDetailPage() {
     fetchRun();
 
     // Connect WebSocket for live updates
-    const ws = new WebSocket(`ws://localhost:8000/ws/${runId}`);
+    // Pass JWT token as query parameter for authentication
+    const wsUrl = token
+      ? `ws://localhost:8000/ws/${runId}?token=${encodeURIComponent(token)}`
+      : `ws://localhost:8000/ws/${runId}`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      const newEvent = JSON.parse(event.data);
-      setRun((prev) => {
-        if (!prev) return prev;
-        return { ...prev, events: [...prev.events, newEvent] };
-      });
+    ws.onopen = () => {
+      console.log("WebSocket connected for live updates");
     };
 
-    ws.onerror = () => console.log("WebSocket error - live updates disabled");
+    ws.onmessage = (event) => {
+      try {
+        const newEvent = JSON.parse(event.data);
+        setRun((prev) => {
+          if (!prev) return prev;
+          // Add new event to the events array
+          return { ...prev, events: [...prev.events, newEvent] };
+        });
+      } catch (e) {
+        console.error("Failed to parse WebSocket event:", e);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.log("WebSocket error - live updates disabled", error);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+    };
 
     return () => ws.close();
   }, [runId]);
@@ -110,6 +140,89 @@ export default function RunDetailPage() {
       default:
         return "#6b7280";
     }
+  }
+
+  function groupEventsByStep(events: Event[]): StepGroup[] {
+    const steps = new Map<number, StepGroup>();
+    let currentStep = 0;
+
+    for (const event of events) {
+      if (event.type === "step_start") {
+        const stepNum =
+          (event.payload as { step_number?: number }).step_number || 0;
+        currentStep = stepNum;
+        if (!steps.has(stepNum)) {
+          steps.set(stepNum, {
+            stepNumber: stepNum,
+            actions: [],
+            timestamp: event.timestamp,
+          });
+        }
+      } else if (event.type === "step_reasoning") {
+        const payload = event.payload as {
+          step_number?: number;
+          evaluation?: string;
+          memory?: string;
+          next_goal?: string;
+        };
+        const stepNum = payload.step_number || currentStep;
+        currentStep = stepNum;
+
+        if (!steps.has(stepNum)) {
+          steps.set(stepNum, {
+            stepNumber: stepNum,
+            actions: [],
+            timestamp: event.timestamp,
+          });
+        }
+
+        const step = steps.get(stepNum)!;
+        step.reasoning = {
+          evaluation: payload.evaluation,
+          memory: payload.memory,
+          next_goal: payload.next_goal,
+        };
+        if (!step.timestamp) {
+          step.timestamp = event.timestamp;
+        }
+      } else if (event.type === "action") {
+        const payload = event.payload as { step_number?: number };
+        const stepNum = payload.step_number || currentStep;
+        currentStep = stepNum;
+
+        if (!steps.has(stepNum)) {
+          steps.set(stepNum, {
+            stepNumber: stepNum,
+            actions: [],
+            timestamp: event.timestamp,
+          });
+        }
+
+        steps.get(stepNum)!.actions.push(event);
+      } else {
+        // Legacy reasoning events - assign to current step
+        if (!steps.has(currentStep)) {
+          steps.set(currentStep, {
+            stepNumber: currentStep,
+            actions: [],
+            timestamp: event.timestamp,
+          });
+        }
+        // Convert legacy reasoning to step_reasoning format
+        const step = steps.get(currentStep)!;
+        if (!step.reasoning) {
+          step.reasoning = {};
+        }
+        const content = (event.payload as { content?: string }).content || "";
+        if (content && !step.reasoning.memory) {
+          step.reasoning.memory = content;
+        }
+      }
+    }
+
+    return Array.from(steps.values()).sort(
+      (a, b) => a.stepNumber - b.stepNumber
+    );
   }
 
   if (loading) {
@@ -186,46 +299,84 @@ export default function RunDetailPage() {
                 )}
               </div>
             ) : (
-              run.events.map((event, i) => (
-                <div key={i} style={styles.eventCard}>
-                  <div style={styles.eventHeader}>
-                    <span
-                      style={{
-                        ...styles.eventType,
-                        ...(event.type === "action"
-                          ? styles.eventTypeAction
-                          : styles.eventTypeReasoning),
-                      }}
-                    >
-                      {event.type === "action" ? "⚡" : "💭"} {event.type}
-                    </span>
-                    <span style={styles.eventTime}>
-                      {formatTime(event.timestamp)}
+              groupEventsByStep(run.events).map((step, stepIdx) => (
+                <div key={stepIdx} style={styles.stepCard}>
+                  <div style={styles.stepHeader}>
+                    <h3 style={styles.stepTitle}>Step {step.stepNumber}</h3>
+                    <span style={styles.stepTime}>
+                      {formatTime(step.timestamp)}
                     </span>
                   </div>
-                  <div style={styles.eventPayload}>
-                    {event.type === "action" ? (
-                      <div style={styles.actionContent}>
-                        <span style={styles.actionKind}>
-                          {(event.payload as { kind?: string }).kind}
-                        </span>
-                        {(event.payload as { selector?: string }).selector && (
-                          <code style={styles.actionSelector}>
-                            {(event.payload as { selector?: string }).selector}
-                          </code>
-                        )}
-                        {(event.payload as { url?: string }).url && (
-                          <span style={styles.actionUrl}>
-                            {(event.payload as { url?: string }).url}
+
+                  {step.reasoning && (
+                    <div style={styles.reasoningSection}>
+                      <div style={styles.reasoningHeader}>💭 Reasoning</div>
+                      {step.reasoning.evaluation && (
+                        <div style={styles.reasoningItem}>
+                          <strong style={styles.reasoningLabel}>
+                            👍 Eval:
+                          </strong>
+                          <span style={styles.reasoningText}>
+                            {step.reasoning.evaluation}
                           </span>
-                        )}
-                      </div>
-                    ) : (
-                      <p style={styles.reasoningContent}>
-                        {(event.payload as { content?: string }).content}
-                      </p>
-                    )}
-                  </div>
+                        </div>
+                      )}
+                      {step.reasoning.memory && (
+                        <div style={styles.reasoningItem}>
+                          <strong style={styles.reasoningLabel}>
+                            🧠 Memory:
+                          </strong>
+                          <span style={styles.reasoningText}>
+                            {step.reasoning.memory}
+                          </span>
+                        </div>
+                      )}
+                      {step.reasoning.next_goal && (
+                        <div style={styles.reasoningItem}>
+                          <strong style={styles.reasoningLabel}>
+                            🎯 Next goal:
+                          </strong>
+                          <span style={styles.reasoningText}>
+                            {step.reasoning.next_goal}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {step.actions.length > 0 && (
+                    <div style={styles.actionsSection}>
+                      <div style={styles.actionsHeader}>⚡ Actions</div>
+                      {step.actions.map((action, actionIdx) => (
+                        <div key={actionIdx} style={styles.actionItem}>
+                          <div style={styles.actionContent}>
+                            <span style={styles.actionKind}>
+                              {(action.payload as { kind?: string }).kind}
+                            </span>
+                            {(action.payload as { selector?: string })
+                              .selector && (
+                              <code style={styles.actionSelector}>
+                                {
+                                  (action.payload as { selector?: string })
+                                    .selector
+                                }
+                              </code>
+                            )}
+                            {(action.payload as { url?: string }).url && (
+                              <span style={styles.actionUrl}>
+                                {(action.payload as { url?: string }).url}
+                              </span>
+                            )}
+                            {(action.payload as { value?: string }).value && (
+                              <span style={styles.actionValue}>
+                                {(action.payload as { value?: string }).value}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -414,7 +565,78 @@ const styles: { [key: string]: React.CSSProperties } = {
   timeline: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: "12px",
+    gap: "16px",
+  },
+  stepCard: {
+    background: "var(--bg-secondary)",
+    borderRadius: "12px",
+    border: "1px solid var(--border)",
+    padding: "20px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "16px",
+  },
+  stepHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px",
+    paddingBottom: "12px",
+    borderBottom: "1px solid var(--border)",
+  },
+  stepTitle: {
+    margin: 0,
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "var(--text-primary)",
+  },
+  stepTime: {
+    color: "var(--text-muted)",
+    fontSize: "12px",
+    fontFamily: "JetBrains Mono, monospace",
+  },
+  reasoningSection: {
+    background: "rgba(168, 85, 247, 0.08)",
+    borderRadius: "8px",
+    padding: "16px",
+    border: "1px solid rgba(168, 85, 247, 0.2)",
+  },
+  reasoningHeader: {
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#c084fc",
+    marginBottom: "12px",
+  },
+  reasoningItem: {
+    marginBottom: "12px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "4px",
+  },
+  reasoningLabel: {
+    fontSize: "13px",
+    color: "#c084fc",
+    marginBottom: "4px",
+  },
+  reasoningText: {
+    fontSize: "14px",
+    color: "var(--text-primary)",
+    lineHeight: 1.6,
+  },
+  actionsSection: {
+    background: "rgba(99, 102, 241, 0.08)",
+    borderRadius: "8px",
+    padding: "16px",
+    border: "1px solid rgba(99, 102, 241, 0.2)",
+  },
+  actionsHeader: {
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#818cf8",
+    marginBottom: "12px",
+  },
+  actionItem: {
+    marginBottom: "8px",
   },
   eventCard: {
     background: "var(--bg-secondary)",
@@ -468,6 +690,11 @@ const styles: { [key: string]: React.CSSProperties } = {
   actionUrl: {
     color: "var(--text-secondary)",
     fontSize: "13px",
+  },
+  actionValue: {
+    color: "var(--text-primary)",
+    fontSize: "13px",
+    fontStyle: "italic",
   },
   reasoningContent: {
     color: "var(--text-primary)",

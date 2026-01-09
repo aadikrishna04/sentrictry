@@ -41,6 +41,7 @@ class SentricMonitor:
         self._stop_sender = False
         self._original_callbacks: dict = {}
         self._current_url: str = ""
+        self._current_step: int = 0
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}"}
@@ -80,21 +81,88 @@ class SentricMonitor:
     def _end_run(self, status: str = "completed") -> None:
         """End the current run."""
         if not self.run_id:
+            print(f"[Sentric] ERROR: Cannot end run - no run_id set!")
             return
 
+        print(f"[Sentric] Attempting to end run {self.run_id} with status: {status}")
+
+        # Ensure status is valid (backend only accepts: completed, failed, cancelled)
+        # But we convert "cancelled" to "failed" since user wants failed for non-completed runs
+        valid_statuses = ["completed", "failed", "cancelled"]
+        if status not in valid_statuses:
+            print(
+                f"[Sentric] Warning: Invalid status '{status}', using 'failed' instead"
+            )
+            status = "failed"
+
+        # Convert "cancelled" to "failed" - if a run isn't completed, it's failed
+        if status == "cancelled":
+            status = "failed"
+
         try:
+            url = f"{self.base_url}/runs/{self.run_id}/end"
+            payload = {"status": status}
+            headers = self._headers()
+
+            print(f"[Sentric] POST {url} with status={status}, run_id={self.run_id}")
+
             resp = requests.post(
-                f"{self.base_url}/runs/{self.run_id}/end",
-                json={"status": status},
-                headers=self._headers(),
+                url,
+                json=payload,
+                headers=headers,
                 timeout=10,
             )
+
+            print(f"[Sentric] Response status code: {resp.status_code}")
+
+            # Check for HTTP errors
+            if resp.status_code >= 400:
+                error_msg = resp.text
+                try:
+                    error_data = resp.json()
+                    error_msg = error_data.get("detail", error_msg)
+                except:
+                    pass
+                raise ValueError(f"Backend returned {resp.status_code}: {error_msg}")
+
+            resp.raise_for_status()
             data = resp.json()
             findings = data.get("findings_count", 0)
-            print(f"[Sentric] Run ended. {findings} security finding(s) detected.")
+            print(
+                f"[Sentric] ✅ Run ended successfully with status '{status}'. {findings} security finding(s) detected."
+            )
             print(f"[Sentric] View report: http://localhost:3000/runs/{self.run_id}")
+        except requests.exceptions.Timeout:
+            print(
+                f"[Sentric] ❌ ERROR: Timeout ending run (status: {status}, run_id: {self.run_id}). Run may still show as 'running'."
+            )
+            import traceback
+
+            traceback.print_exc()
+        except requests.exceptions.ConnectionError as e:
+            print(
+                f"[Sentric] ❌ ERROR: Could not connect to backend to end run (status: {status}, run_id: {self.run_id}). Run may still show as 'running'."
+            )
+            print(f"[Sentric] Connection error: {e}")
+            import traceback
+
+            traceback.print_exc()
+        except ValueError as e:
+            # Validation or backend errors
+            print(f"[Sentric] ❌ ERROR: Failed to end run - {e}")
+            print(
+                f"[Sentric] Response body: {resp.text if 'resp' in locals() else 'N/A'}"
+            )
+            import traceback
+
+            traceback.print_exc()
         except Exception as e:
-            print(f"[Sentric] Warning: Failed to end run: {e}")
+            print(
+                f"[Sentric] ❌ ERROR: Unexpected error ending run (status: {status}, run_id: {self.run_id}): {e}"
+            )
+            import traceback
+
+            traceback.print_exc()
 
     def _connect_ws(self) -> None:
         """Establish WebSocket connection."""
@@ -183,9 +251,10 @@ class SentricMonitor:
         selector: Optional[str] = None,
         url: Optional[str] = None,
         value: Optional[str] = None,
+        step_number: Optional[int] = None,
     ) -> None:
         """Log an agent action."""
-        payload = {"kind": kind}
+        payload = {"kind": kind, "step_number": step_number or self._current_step}
         if selector:
             payload["selector"] = selector
         if url:
@@ -201,112 +270,194 @@ class SentricMonitor:
         """Log agent reasoning/thinking."""
         self._send_event("reasoning", {"content": content})
 
+    def log_step_start(self, step_number: int) -> None:
+        """Log the start of a new step."""
+        self._current_step = step_number
+        self._send_event("step_start", {"step_number": step_number})
+
+    def log_step_reasoning(
+        self,
+        step_number: int,
+        evaluation: Optional[str] = None,
+        memory: Optional[str] = None,
+        next_goal: Optional[str] = None,
+    ) -> None:
+        """Log structured reasoning for a step."""
+        self._current_step = step_number
+        self._send_event(
+            "step_reasoning",
+            {
+                "step_number": step_number,
+                "evaluation": evaluation,
+                "memory": memory,
+                "next_goal": next_goal,
+            },
+        )
+
     def _register_callbacks(self, agent: Any) -> None:
-        """Register callbacks on the BrowserUse agent to intercept actions."""
-        # Hook into controller's registry for action callbacks
-        if hasattr(agent, "controller") and agent.controller:
-            controller = agent.controller
+        """Register callbacks on the BrowserUse agent to intercept actions.
 
-            # Store original execute method if exists
-            if hasattr(controller, "registry") and hasattr(
-                controller.registry, "execute_action"
-            ):
-                original_execute = controller.registry.execute_action
-                self._original_callbacks["execute_action"] = original_execute
+        This uses the public BrowserUse API (register_new_step_callback) to work
+        with any agent configuration and any LLM model.
+        """
+        # Hook into controller's registry for action callbacks (if available)
+        # Handle both "controller" and "tools" (they're aliases in BrowserUse)
+        tools = getattr(agent, "controller", None) or getattr(agent, "tools", None)
 
-                async def wrapped_execute(
-                    action_name: str, params: dict, *args, **kwargs
-                ):
-                    # Log the action
-                    self.log_action(
-                        kind=action_name,
-                        selector=params.get("selector") or params.get("index"),
-                        url=params.get("url"),
-                        value=params.get("text") or params.get("value"),
+        if (
+            tools
+            and hasattr(tools, "registry")
+            and hasattr(tools.registry, "execute_action")
+        ):
+            original_execute = tools.registry.execute_action
+            self._original_callbacks["execute_action"] = original_execute
+
+            async def wrapped_execute(action_name: str, params: dict, *args, **kwargs):
+                # Log the action with current step number
+                self.log_action(
+                    kind=action_name,
+                    selector=params.get("selector")
+                    or (
+                        str(params.get("index", ""))
+                        if params.get("index") is not None
+                        else None
+                    ),
+                    url=params.get("url"),
+                    value=params.get("text") or params.get("value"),
+                    step_number=self._current_step,
+                )
+                # Track URL changes
+                if action_name in ["go_to_url", "navigate"]:
+                    self._current_url = params.get("url", self._current_url)
+
+                return await original_execute(action_name, params, *args, **kwargs)
+
+            tools.registry.execute_action = wrapped_execute
+
+        # Use the public API: register_new_step_callback
+        # Signature: (browser_state_summary: BrowserStateSummary, agent_output: AgentOutput, step_number: int)
+        original_callback = getattr(agent, "register_new_step_callback", None)
+        if original_callback:
+            self._original_callbacks["register_new_step_callback"] = original_callback
+
+        async def step_callback(
+            browser_state_summary: Any, agent_output: Any, step_number: int
+        ):
+            """Callback that matches BrowserUse's register_new_step_callback signature."""
+            print(f"[Sentric] 🔔 Step callback invoked: step={step_number}")
+
+            # Update current step
+            if step_number > self._current_step:
+                self.log_step_start(step_number)
+
+            # Extract URL from browser_state_summary if available
+            if browser_state_summary and hasattr(browser_state_summary, "url"):
+                self._current_url = browser_state_summary.url
+
+            # Extract reasoning from AgentOutput
+            if agent_output:
+                print(f"[Sentric] 📋 agent_output type: {type(agent_output).__name__}")
+                print(
+                    f"[Sentric] 📋 agent_output attrs: {[a for a in dir(agent_output) if not a.startswith('_')][:10]}"
+                )
+
+                evaluation = None
+                memory = None
+                next_goal = None
+
+                # AgentOutput has these fields directly (not nested)
+                if hasattr(agent_output, "evaluation_previous_goal"):
+                    evaluation = (
+                        str(agent_output.evaluation_previous_goal)
+                        if agent_output.evaluation_previous_goal
+                        else None
                     )
-                    # Track URL changes
-                    if action_name in ["go_to_url", "navigate"]:
-                        self._current_url = params.get("url", self._current_url)
+                if hasattr(agent_output, "memory"):
+                    memory = str(agent_output.memory) if agent_output.memory else None
+                if hasattr(agent_output, "next_goal"):
+                    next_goal = (
+                        str(agent_output.next_goal) if agent_output.next_goal else None
+                    )
 
-                    return await original_execute(action_name, params, *args, **kwargs)
+                print(
+                    f"[Sentric] 💭 Reasoning: eval={evaluation[:50] if evaluation else None}..., memory={memory[:50] if memory else None}..., goal={next_goal[:50] if next_goal else None}..."
+                )
 
-                controller.registry.execute_action = wrapped_execute
-
-        # Hook into agent's step callback for reasoning
-        if hasattr(agent, "_step_callback"):
-            self._original_callbacks["step_callback"] = agent._step_callback
-
-        # Create a callback that logs model outputs (reasoning)
-        original_callback = getattr(agent, "_step_callback", None)
-
-        async def step_callback(step_info):
-            # Extract reasoning from step info
-            if hasattr(step_info, "model_output") and step_info.model_output:
-                output = step_info.model_output
-                # Log thinking/reasoning
-                if hasattr(output, "current_state") and output.current_state:
-                    state = output.current_state
-                    thoughts = []
-                    if hasattr(state, "evaluation_previous_goal"):
-                        thoughts.append(f"Evaluation: {state.evaluation_previous_goal}")
-                    if hasattr(state, "memory"):
-                        thoughts.append(f"Memory: {state.memory}")
-                    if hasattr(state, "next_goal"):
-                        thoughts.append(f"Next goal: {state.next_goal}")
-                    if thoughts:
-                        self.log_reasoning(" | ".join(thoughts))
+                # Log structured reasoning if available
+                if evaluation or memory or next_goal:
+                    self.log_step_reasoning(
+                        step_number=step_number,
+                        evaluation=evaluation,
+                        memory=memory,
+                        next_goal=next_goal,
+                    )
+                    print(f"[Sentric] ✅ Sent step_reasoning event")
+                else:
+                    print(f"[Sentric] ⚠️ No reasoning data found in agent_output")
 
                 # Log the action being taken
-                if hasattr(output, "action") and output.action:
-                    action = output.action
-                    for action_item in action:
-                        action_dict = (
-                            action_item.model_dump()
-                            if hasattr(action_item, "model_dump")
-                            else {}
-                        )
-                        for action_name, action_params in action_dict.items():
-                            if action_params is not None:
-                                params = (
-                                    action_params
-                                    if isinstance(action_params, dict)
-                                    else {}
-                                )
-                                self.log_action(
-                                    kind=action_name,
-                                    selector=(
-                                        str(params.get("index", "")) if params else None
-                                    ),
-                                    url=params.get("url") if params else None,
-                                    value=params.get("text") if params else None,
-                                )
-                                if action_name == "go_to_url" and params:
-                                    self._current_url = params.get(
-                                        "url", self._current_url
+                if hasattr(agent_output, "action") and agent_output.action:
+                    for action_item in agent_output.action:
+                        # Action items are ActionModel instances with model_dump method
+                        if hasattr(action_item, "model_dump"):
+                            action_dict = action_item.model_dump(exclude_unset=True)
+                            for action_name, action_params in action_dict.items():
+                                if action_params is not None:
+                                    params = (
+                                        action_params
+                                        if isinstance(action_params, dict)
+                                        else {}
                                     )
+                                    self.log_action(
+                                        kind=action_name,
+                                        selector=(
+                                            str(params.get("index", ""))
+                                            if params.get("index") is not None
+                                            else None
+                                        ),
+                                        url=params.get("url") if params else None,
+                                        value=(
+                                            params.get("text") or params.get("value")
+                                            if params
+                                            else None
+                                        ),
+                                        step_number=step_number,
+                                    )
+                                    # Track URL changes
+                                    if action_name == "go_to_url" and params:
+                                        self._current_url = params.get(
+                                            "url", self._current_url
+                                        )
 
-            # Call original callback if exists
+            # Chain to original callback if it exists
             if original_callback:
-                await original_callback(step_info)
+                if asyncio.iscoroutinefunction(original_callback):
+                    await original_callback(
+                        browser_state_summary, agent_output, step_number
+                    )
+                else:
+                    original_callback(browser_state_summary, agent_output, step_number)
 
-        agent._step_callback = step_callback
-
-        # Also try to hook into the on_step_end if available
-        if hasattr(agent, "register_step_callback"):
-            agent.register_step_callback(step_callback)
+        # Set the callback (works even if agent is already created)
+        agent.register_new_step_callback = step_callback
 
     def _unregister_callbacks(self, agent: Any) -> None:
         """Restore original callbacks."""
-        if hasattr(agent, "controller") and agent.controller:
-            controller = agent.controller
-            if "execute_action" in self._original_callbacks:
-                if hasattr(controller, "registry"):
-                    controller.registry.execute_action = self._original_callbacks[
-                        "execute_action"
-                    ]
+        # Restore execute_action callback
+        tools = getattr(agent, "controller", None) or getattr(agent, "tools", None)
+        if tools and "execute_action" in self._original_callbacks:
+            if hasattr(tools, "registry"):
+                tools.registry.execute_action = self._original_callbacks[
+                    "execute_action"
+                ]
 
-        if "step_callback" in self._original_callbacks:
-            agent._step_callback = self._original_callbacks["step_callback"]
+        # Restore register_new_step_callback (or set to None if it didn't exist)
+        if "register_new_step_callback" in self._original_callbacks:
+            agent.register_new_step_callback = self._original_callbacks[
+                "register_new_step_callback"
+            ]
+        else:
+            agent.register_new_step_callback = None
 
         self._original_callbacks.clear()
 
@@ -346,20 +497,67 @@ class SentricMonitor:
         # Register callbacks
         self._register_callbacks(agent)
 
-        status = "completed"
+        status = (
+            "completed"  # Default to completed, will be updated if exception occurs
+        )
         try:
             yield agent
-        except Exception as e:
+            # If we get here without exception, the run completed successfully
+            status = "completed"
+        except (KeyboardInterrupt, asyncio.CancelledError, SystemExit):
+            # Any interruption or cancellation means the run failed
             status = "failed"
-            self.log_reasoning(f"Agent failed with error: {str(e)}")
+            try:
+                self.log_reasoning("Run interrupted or cancelled - marked as failed")
+            except:
+                pass  # Don't fail on logging during interrupt
+            raise
+        except Exception as e:
+            # Any other exception means the run failed
+            status = "failed"
+            try:
+                self.log_reasoning(f"Agent failed with error: {str(e)}")
+            except:
+                pass  # Don't fail on logging during exception
             raise
         finally:
-            # Cleanup
-            self._unregister_callbacks(agent)
+            # CRITICAL: End the run FIRST before any async cleanup
+            # This ensures the run status is updated even if cleanup fails or is interrupted
+            # If status is still "running" or anything other than "completed", mark as "failed"
+            if status != "completed":
+                status = "failed"
 
-            # Flush remaining events
-            await asyncio.sleep(0.5)
+            # End run immediately and synchronously (before async cleanup)
+            print(f"[Sentric] Ending run with status: {status}")
+            try:
+                self._end_run(status)
+            except Exception as e:
+                # Last resort - at least print an error
+                print(
+                    f"[Sentric] CRITICAL ERROR: Failed to end run with status '{status}': {e}"
+                )
+                import traceback
 
-            self._stop_sender_thread()
-            self._disconnect_ws()
-            self._end_run(status)
+                traceback.print_exc()
+
+            # Now do cleanup - but run ending is more important
+            try:
+                self._unregister_callbacks(agent)
+            except Exception as e:
+                print(f"[Sentric] Warning: Error unregistering callbacks: {e}")
+
+            # Flush remaining events (but don't wait too long)
+            try:
+                await asyncio.sleep(0.1)  # Reduced from 0.5 to 0.1 seconds
+            except:
+                pass  # Don't fail on sleep if we're shutting down
+
+            try:
+                self._stop_sender_thread()
+            except Exception as e:
+                print(f"[Sentric] Warning: Error stopping sender thread: {e}")
+
+            try:
+                self._disconnect_ws()
+            except Exception as e:
+                print(f"[Sentric] Warning: Error disconnecting WebSocket: {e}")

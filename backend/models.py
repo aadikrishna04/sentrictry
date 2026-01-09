@@ -17,7 +17,7 @@ class RunEndRequest(BaseModel):
 
 
 class Event(BaseModel):
-    type: Literal["action", "reasoning"]
+    type: Literal["action", "reasoning", "step_start", "step_reasoning"]
     timestamp: Optional[str] = None
     payload: dict
 
