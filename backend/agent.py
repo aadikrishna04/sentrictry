@@ -93,7 +93,7 @@ Stop once you've provided the comprehensive vacation plan summary.
 # -------------------------
 
 monitor = SentricMonitor(
-    api_key="sk_aeGSD7aNFz285tt1KuLdQAXZnqDAfs-MiRG2koVTEW4",
+    api_key="sk_Re3vUsyiOZLmFPCnrtiKQhBd042dqcyYugwt9juJev8",
     project_id="proj_demo",
     base_url="http://localhost:8000",
 )
@@ -148,7 +148,11 @@ async def main():
 
             print("\n✅ Vacation Planning Completed")
             print("================================")
-            print(result.final_answer)
+            # Only print final_answer if it exists (may not be present if agent failed)
+            if hasattr(result, 'final_answer') and result.final_answer:
+                print(result.final_answer)
+            else:
+                print("Agent execution completed. Check Sentric dashboard for actions and reasoning.")
     except ValueError as e:
         # API key validation failed - don't start browser
         print(f"\n❌ Sentric API key validation failed")

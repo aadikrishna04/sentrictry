@@ -290,161 +290,165 @@ export default function RunDetailPage() {
 
       <main style={styles.main}>
         {activeTab === "timeline" ? (
-          <div style={styles.timeline}>
-            {run.events.length === 0 ? (
-              <div style={styles.empty}>
-                <p>No events yet</p>
-                {run.status === "running" && (
-                  <p style={styles.emptyHint}>Waiting for agent activity...</p>
-                )}
-              </div>
-            ) : (
-              groupEventsByStep(run.events).map((step, stepIdx) => (
-                <div key={stepIdx} style={styles.stepCard}>
-                  <div style={styles.stepHeader}>
-                    <h3 style={styles.stepTitle}>Step {step.stepNumber}</h3>
-                    <span style={styles.stepTime}>
-                      {formatTime(step.timestamp)}
-                    </span>
-                  </div>
-
-                  {step.reasoning && (
-                    <div style={styles.reasoningSection}>
-                      <div style={styles.reasoningHeader}>💭 Reasoning</div>
-                      {step.reasoning.evaluation && (
-                        <div style={styles.reasoningItem}>
-                          <strong style={styles.reasoningLabel}>
-                            👍 Eval:
-                          </strong>
-                          <span style={styles.reasoningText}>
-                            {step.reasoning.evaluation}
-                          </span>
-                        </div>
-                      )}
-                      {step.reasoning.memory && (
-                        <div style={styles.reasoningItem}>
-                          <strong style={styles.reasoningLabel}>
-                            🧠 Memory:
-                          </strong>
-                          <span style={styles.reasoningText}>
-                            {step.reasoning.memory}
-                          </span>
-                        </div>
-                      )}
-                      {step.reasoning.next_goal && (
-                        <div style={styles.reasoningItem}>
-                          <strong style={styles.reasoningLabel}>
-                            🎯 Next goal:
-                          </strong>
-                          <span style={styles.reasoningText}>
-                            {step.reasoning.next_goal}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {step.actions.length > 0 && (
-                    <div style={styles.actionsSection}>
-                      <div style={styles.actionsHeader}>⚡ Actions</div>
-                      {step.actions.map((action, actionIdx) => (
-                        <div key={actionIdx} style={styles.actionItem}>
-                          <div style={styles.actionContent}>
-                            <span style={styles.actionKind}>
-                              {(action.payload as { kind?: string }).kind}
-                            </span>
-                            {(action.payload as { selector?: string })
-                              .selector && (
-                              <code style={styles.actionSelector}>
-                                {
-                                  (action.payload as { selector?: string })
-                                    .selector
-                                }
-                              </code>
-                            )}
-                            {(action.payload as { url?: string }).url && (
-                              <span style={styles.actionUrl}>
-                                {(action.payload as { url?: string }).url}
-                              </span>
-                            )}
-                            {(action.payload as { value?: string }).value && (
-                              <span style={styles.actionValue}>
-                                {(action.payload as { value?: string }).value}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+          <div style={styles.timelineContainer}>
+            <div style={styles.timeline}>
+              {run.events.length === 0 ? (
+                <div style={styles.empty}>
+                  <p>No events yet</p>
+                  {run.status === "running" && (
+                    <p style={styles.emptyHint}>Waiting for agent activity...</p>
                   )}
                 </div>
-              ))
-            )}
-            <div ref={eventsEndRef} />
-          </div>
-        ) : (
-          <div style={styles.securityReport}>
-            {/* Summary */}
-            <div style={styles.summaryCard}>
-              <h2 style={styles.summaryTitle}>Risk Summary</h2>
-              <div style={styles.severityGrid}>
-                {["critical", "high", "medium", "low"].map((severity) => (
-                  <div key={severity} style={styles.severityItem}>
-                    <div
-                      style={{
-                        ...styles.severityCount,
-                        color: getSeverityColor(severity),
-                      }}
-                    >
-                      {severityCounts[severity] || 0}
+              ) : (
+                groupEventsByStep(run.events).map((step, stepIdx) => (
+                  <div key={stepIdx} style={styles.stepCard}>
+                    <div style={styles.stepHeader}>
+                      <h3 style={styles.stepTitle}>Step {step.stepNumber}</h3>
+                      <span style={styles.stepTime}>
+                        {formatTime(step.timestamp)}
+                      </span>
                     </div>
-                    <div style={styles.severityLabel}>{severity}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Findings */}
-            {run.findings.length === 0 ? (
-              <div style={styles.noFindings}>
-                <div style={styles.noFindingsIcon}>✓</div>
-                <p>No security issues detected</p>
-              </div>
-            ) : (
-              <div style={styles.findingsList}>
-                {run.findings.map((finding, i) => (
-                  <div key={i} style={styles.findingCard}>
-                    <div style={styles.findingHeader}>
-                      <span
-                        style={{
-                          ...styles.severityBadge,
-                          background: `${getSeverityColor(finding.severity)}20`,
-                          color: getSeverityColor(finding.severity),
-                        }}
-                      >
-                        {finding.severity.toUpperCase()}
-                      </span>
-                      <span style={styles.findingCategory}>
-                        {finding.category}
-                      </span>
-                    </div>
-                    <p style={styles.findingDescription}>
-                      {finding.description}
-                    </p>
-                    {finding.evidence.length > 0 && (
-                      <details style={styles.evidenceDetails}>
-                        <summary style={styles.evidenceSummary}>
-                          View Evidence
-                        </summary>
-                        <pre style={styles.evidenceCode}>
-                          {JSON.stringify(finding.evidence, null, 2)}
-                        </pre>
-                      </details>
+                    {step.reasoning && (
+                      <div style={styles.reasoningSection}>
+                        <div style={styles.reasoningHeader}>💭 Reasoning</div>
+                        {step.reasoning.evaluation && (
+                          <div style={styles.reasoningItem}>
+                            <strong style={styles.reasoningLabel}>
+                              👍 Eval:
+                            </strong>
+                            <span style={styles.reasoningText}>
+                              {step.reasoning.evaluation}
+                            </span>
+                          </div>
+                        )}
+                        {step.reasoning.memory && (
+                          <div style={styles.reasoningItem}>
+                            <strong style={styles.reasoningLabel}>
+                              🧠 Memory:
+                            </strong>
+                            <span style={styles.reasoningText}>
+                              {step.reasoning.memory}
+                            </span>
+                          </div>
+                        )}
+                        {step.reasoning.next_goal && (
+                          <div style={styles.reasoningItem}>
+                            <strong style={styles.reasoningLabel}>
+                              🎯 Next goal:
+                            </strong>
+                            <span style={styles.reasoningText}>
+                              {step.reasoning.next_goal}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {step.actions.length > 0 && (
+                      <div style={styles.actionsSection}>
+                        <div style={styles.actionsHeader}>⚡ Actions</div>
+                        {step.actions.map((action, actionIdx) => (
+                          <div key={actionIdx} style={styles.actionItem}>
+                            <div style={styles.actionContent}>
+                              <span style={styles.actionKind}>
+                                {(action.payload as { kind?: string }).kind}
+                              </span>
+                              {(action.payload as { selector?: string })
+                                .selector && (
+                                <code style={styles.actionSelector}>
+                                  {
+                                    (action.payload as { selector?: string })
+                                      .selector
+                                  }
+                                </code>
+                              )}
+                              {(action.payload as { url?: string }).url && (
+                                <span style={styles.actionUrl}>
+                                  {(action.payload as { url?: string }).url}
+                                </span>
+                              )}
+                              {(action.payload as { value?: string }).value && (
+                                <span style={styles.actionValue}>
+                                  {(action.payload as { value?: string }).value}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                ))}
+                ))
+              )}
+              <div ref={eventsEndRef} />
+            </div>
+          </div>
+        ) : (
+          <div style={styles.timelineContainer}>
+            <div style={styles.securityReport}>
+              {/* Summary */}
+              <div style={styles.summaryCard}>
+                <h2 style={styles.summaryTitle}>Risk Summary</h2>
+                <div style={styles.severityGrid}>
+                  {["critical", "high", "medium", "low"].map((severity) => (
+                    <div key={severity} style={styles.severityItem}>
+                      <div
+                        style={{
+                          ...styles.severityCount,
+                          color: getSeverityColor(severity),
+                        }}
+                      >
+                        {severityCounts[severity] || 0}
+                      </div>
+                      <div style={styles.severityLabel}>{severity}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            )}
+
+              {/* Findings */}
+              {run.findings.length === 0 ? (
+                <div style={styles.noFindings}>
+                  <div style={styles.noFindingsIcon}>✓</div>
+                  <p>No security issues detected</p>
+                </div>
+              ) : (
+                <div style={styles.findingsList}>
+                  {run.findings.map((finding, i) => (
+                    <div key={i} style={styles.findingCard}>
+                      <div style={styles.findingHeader}>
+                        <span
+                          style={{
+                            ...styles.severityBadge,
+                            background: `${getSeverityColor(finding.severity)}20`,
+                            color: getSeverityColor(finding.severity),
+                          }}
+                        >
+                          {finding.severity.toUpperCase()}
+                        </span>
+                        <span style={styles.findingCategory}>
+                          {finding.category}
+                        </span>
+                      </div>
+                      <p style={styles.findingDescription}>
+                        {finding.description}
+                      </p>
+                      {finding.evidence.length > 0 && (
+                        <details style={styles.evidenceDetails}>
+                          <summary style={styles.evidenceSummary}>
+                            View Evidence
+                          </summary>
+                          <pre style={styles.evidenceCode}>
+                            {JSON.stringify(finding.evidence, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>
@@ -455,7 +459,11 @@ export default function RunDetailPage() {
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     minHeight: "100vh",
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column" as const,
     background: "linear-gradient(180deg, #0a0a0f 0%, #0f0f18 100%)",
+    overflow: "hidden" as const,
   },
   loading: {
     minHeight: "100vh",
@@ -548,6 +556,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: "32px 48px",
     maxWidth: "1000px",
     margin: "0 auto",
+    display: "flex",
+    flexDirection: "column" as const,
+    flex: 1,
+    minHeight: 0, // Important for flex children to allow scrolling
   },
   empty: {
     padding: "60px",
@@ -561,6 +573,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: "var(--text-muted)",
     fontSize: "14px",
     marginTop: "8px",
+  },
+  timelineContainer: {
+    flex: 1,
+    overflowY: "auto" as const,
+    overflowX: "hidden" as const,
+    paddingRight: "8px",
   },
   timeline: {
     display: "flex",
