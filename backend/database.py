@@ -45,6 +45,9 @@ async def init_db():
                 status TEXT DEFAULT 'running',
                 start_time TEXT DEFAULT CURRENT_TIMESTAMP,
                 end_time TEXT,
+                video_path TEXT,
+                video_start_time TEXT,
+                laminar_trace_id TEXT,
                 FOREIGN KEY (project_id) REFERENCES projects(id)
             );
             
@@ -54,6 +57,7 @@ async def init_db():
                 type TEXT NOT NULL,
                 payload TEXT NOT NULL,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                video_timestamp REAL,
                 FOREIGN KEY (run_id) REFERENCES runs(id)
             );
             
@@ -86,6 +90,30 @@ async def init_db():
                 await db.commit()
         except Exception:
             pass  # Column might already exist or table doesn't exist yet
+
+        # Migration: Add video columns to runs table if they don't exist
+        try:
+            cursor = await db.execute("PRAGMA table_info(runs)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "video_path" not in columns:
+                await db.execute("ALTER TABLE runs ADD COLUMN video_path TEXT")
+            if "video_start_time" not in columns:
+                await db.execute("ALTER TABLE runs ADD COLUMN video_start_time TEXT")
+            if "laminar_trace_id" not in columns:
+                await db.execute("ALTER TABLE runs ADD COLUMN laminar_trace_id TEXT")
+            await db.commit()
+        except Exception:
+            pass
+
+        # Migration: Add video_timestamp column to events table if it doesn't exist
+        try:
+            cursor = await db.execute("PRAGMA table_info(events)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "video_timestamp" not in columns:
+                await db.execute("ALTER TABLE events ADD COLUMN video_timestamp REAL")
+            await db.commit()
+        except Exception:
+            pass
 
 
 async def get_db():

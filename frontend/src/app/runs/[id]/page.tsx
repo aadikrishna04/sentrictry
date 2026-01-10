@@ -8,6 +8,7 @@ interface Event {
   type: "action" | "reasoning" | "step_start" | "step_reasoning";
   payload: Record<string, unknown>;
   timestamp: string;
+  video_timestamp?: number;
 }
 
 interface StepGroup {
@@ -19,6 +20,7 @@ interface StepGroup {
   };
   actions: Event[];
   timestamp: string;
+  videoTimestamp?: number;
 }
 
 interface Finding {
@@ -37,6 +39,9 @@ interface Run {
   end_time: string | null;
   events: Event[];
   findings: Finding[];
+  video_path?: string;
+  video_start_time?: string;
+  laminar_trace_id?: string;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -53,6 +58,7 @@ export default function RunDetailPage() {
   );
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -156,6 +162,7 @@ export default function RunDetailPage() {
             stepNumber: stepNum,
             actions: [],
             timestamp: event.timestamp,
+            videoTimestamp: event.video_timestamp,
           });
         }
       } else if (event.type === "step_reasoning") {
@@ -173,6 +180,7 @@ export default function RunDetailPage() {
             stepNumber: stepNum,
             actions: [],
             timestamp: event.timestamp,
+            videoTimestamp: event.video_timestamp,
           });
         }
 
@@ -185,6 +193,9 @@ export default function RunDetailPage() {
         if (!step.timestamp) {
           step.timestamp = event.timestamp;
         }
+        if (event.video_timestamp !== undefined && step.videoTimestamp === undefined) {
+          step.videoTimestamp = event.video_timestamp;
+        }
       } else if (event.type === "action") {
         const payload = event.payload as { step_number?: number };
         const stepNum = payload.step_number || currentStep;
@@ -195,10 +206,16 @@ export default function RunDetailPage() {
             stepNumber: stepNum,
             actions: [],
             timestamp: event.timestamp,
+            videoTimestamp: event.video_timestamp,
           });
         }
 
-        steps.get(stepNum)!.actions.push(event);
+        const step = steps.get(stepNum)!;
+        step.actions.push(event);
+        // Use first action's video timestamp if step doesn't have one
+        if (event.video_timestamp !== undefined && step.videoTimestamp === undefined) {
+          step.videoTimestamp = event.video_timestamp;
+        }
       } else {
         // Legacy reasoning events - assign to current step
         if (!steps.has(currentStep)) {
@@ -206,6 +223,7 @@ export default function RunDetailPage() {
             stepNumber: currentStep,
             actions: [],
             timestamp: event.timestamp,
+            videoTimestamp: event.video_timestamp,
           });
         }
         // Convert legacy reasoning to step_reasoning format
@@ -217,12 +235,35 @@ export default function RunDetailPage() {
         if (content && !step.reasoning.memory) {
           step.reasoning.memory = content;
         }
+        if (event.video_timestamp !== undefined && step.videoTimestamp === undefined) {
+          step.videoTimestamp = event.video_timestamp;
+        }
       }
     }
 
     return Array.from(steps.values()).sort(
       (a, b) => a.stepNumber - b.stepNumber
     );
+  }
+
+  function seekToTimestamp(timestamp: number) {
+    if (videoRef.current) {
+      videoRef.current.currentTime = timestamp;
+      videoRef.current.play();
+    }
+  }
+
+  function getLaminarUrl(traceId: string, timestamp?: number): string {
+    // Laminar Cloud URL format (adjust if using self-hosted)
+    // Format: https://app.laminar.ai/projects/{project_id}/traces/{trace_id}
+    // With timestamp: add ?t={seconds} query param
+    const baseUrl = process.env.NEXT_PUBLIC_LAMINAR_URL || "https://app.laminar.ai";
+    const projectId = process.env.NEXT_PUBLIC_LAMINAR_PROJECT_ID || "";
+    let url = `${baseUrl}/projects/${projectId}/traces/${traceId}`;
+    if (timestamp !== undefined) {
+      url += `?t=${timestamp.toFixed(1)}`;
+    }
+    return url;
   }
 
   if (loading) {
@@ -291,6 +332,41 @@ export default function RunDetailPage() {
       <main style={styles.main}>
         {activeTab === "timeline" ? (
           <div style={styles.timelineContainer}>
+            {/* Laminar Recording Link - Show when Laminar trace is available */}
+            {run && (run.status === "completed" || run.status === "failed") && run.laminar_trace_id && (
+              <div style={styles.laminarContainer}>
+                <div style={styles.laminarHeader}>
+                  <span style={styles.laminarIcon}>🎥</span>
+                  <div style={styles.laminarContent}>
+                    <h3 style={styles.laminarTitle}>Full Browser Session Recording</h3>
+                    <p style={styles.laminarDescription}>
+                      View the complete real-time browser recording synced with agent steps in Laminar
+                    </p>
+                    <a
+                      href={getLaminarUrl(run.laminar_trace_id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={styles.laminarButton}
+                    >
+                      Open in Laminar →
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Video Player - Show when run is completed or failed and video exists (fallback) */}
+            {run && (run.status === "completed" || run.status === "failed") && run.video_path && !run.laminar_trace_id && (
+              <div style={styles.videoContainer}>
+                <video
+                  ref={videoRef}
+                  controls
+                  style={styles.video}
+                  src={`${API_URL}/api/runs/${runId}/video`}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            )}
             <div style={styles.timeline}>
               {run.events.length === 0 ? (
                 <div style={styles.empty}>
@@ -304,9 +380,32 @@ export default function RunDetailPage() {
                   <div key={stepIdx} style={styles.stepCard}>
                     <div style={styles.stepHeader}>
                       <h3 style={styles.stepTitle}>Step {step.stepNumber}</h3>
-                      <span style={styles.stepTime}>
-                        {formatTime(step.timestamp)}
-                      </span>
+                      <div style={styles.stepHeaderRight}>
+                        <span style={styles.stepTime}>
+                          {formatTime(step.timestamp)}
+                        </span>
+                        {step.videoTimestamp !== undefined && run && (run.status === "completed" || run.status === "failed") && (
+                          run.laminar_trace_id ? (
+                            <a
+                              href={getLaminarUrl(run.laminar_trace_id, step.videoTimestamp)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={styles.watchReplayButton}
+                              title={`Jump to ${step.videoTimestamp.toFixed(1)}s in Laminar recording`}
+                            >
+                              ▶ Watch Replay
+                            </a>
+                          ) : run.video_path ? (
+                            <button
+                              style={styles.watchReplayButton}
+                              onClick={() => seekToTimestamp(step.videoTimestamp!)}
+                              title={`Jump to ${step.videoTimestamp.toFixed(1)}s in video`}
+                            >
+                              ▶ Watch Replay
+                            </button>
+                          ) : null
+                        )}
+                      </div>
                     </div>
 
                     {step.reasoning && (
@@ -601,6 +700,77 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: "8px",
     paddingBottom: "12px",
     borderBottom: "1px solid var(--border)",
+  },
+  stepHeaderRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+  },
+  watchReplayButton: {
+    padding: "6px 12px",
+    background: "var(--accent)",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 500,
+    cursor: "pointer",
+    transition: "all 0.15s",
+    fontFamily: "inherit",
+  },
+  laminarContainer: {
+    marginBottom: "24px",
+    background: "var(--bg-secondary)",
+    borderRadius: "12px",
+    border: "1px solid var(--border)",
+    padding: "20px",
+  },
+  laminarHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "16px",
+  },
+  laminarIcon: {
+    fontSize: "32px",
+  },
+  laminarContent: {
+    flex: 1,
+  },
+  laminarTitle: {
+    margin: "0 0 8px 0",
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "var(--text-primary)",
+  },
+  laminarDescription: {
+    margin: "0 0 16px 0",
+    fontSize: "14px",
+    color: "var(--text-secondary)",
+    lineHeight: 1.5,
+  },
+  laminarButton: {
+    display: "inline-block",
+    padding: "10px 20px",
+    background: "var(--accent)",
+    color: "white",
+    textDecoration: "none",
+    borderRadius: "8px",
+    fontSize: "14px",
+    fontWeight: 500,
+    transition: "all 0.15s",
+  },
+  videoContainer: {
+    marginBottom: "24px",
+    background: "var(--bg-secondary)",
+    borderRadius: "12px",
+    border: "1px solid var(--border)",
+    padding: "16px",
+    overflow: "hidden",
+  },
+  video: {
+    width: "100%",
+    maxHeight: "600px",
+    borderRadius: "8px",
   },
   stepTitle: {
     margin: 0,

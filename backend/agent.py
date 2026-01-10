@@ -15,6 +15,25 @@ from browser_use.controller import Controller
 from browser_use.llm import ChatOpenAI
 from sentric import SentricMonitor
 
+# Initialize Laminar for browser session recording
+# This automatically captures full real-time browser recordings synced with agent steps
+try:
+    from lmnr import Laminar
+    
+    laminar_api_key = os.getenv("LMNR_PROJECT_API_KEY")
+    if laminar_api_key:
+        Laminar.initialize(project_api_key=laminar_api_key)
+        print("[Laminar] ✅ Initialized - browser session recordings will be captured")
+    else:
+        print("[Laminar] ⚠️  LMNR_PROJECT_API_KEY not set - skipping Laminar integration")
+        print("[Laminar]    To enable: export LMNR_PROJECT_API_KEY=<your-key>")
+        print("[Laminar]    Get your key from: https://laminar.ai")
+except ImportError:
+    print("[Laminar] ⚠️  lmnr package not installed - skipping Laminar integration")
+    print("[Laminar]    Install with: pip install lmnr")
+except Exception as e:
+    print(f"[Laminar] ⚠️  Failed to initialize Laminar: {e}")
+
 
 # -------------------------
 # CONFIG
@@ -24,12 +43,16 @@ OPENAI_API_KEY = ""  # TODO: Replace with your OpenAI API key
 LLM_MODEL = "gpt-5-mini"  # or any supported model
 START_URL = "https://www.google.com"
 
-# Connect to user's actual Chrome browser (preserves cookies, sessions, extensions)
-# Note: You need to fully close Chrome before running this
+# Connect to Chromium via Playwright with video recording enabled
+# Videos will be recorded by Playwright into the shared project-root `videos` folder
+videos_dir = os.path.join(os.path.dirname(__file__), "..", "videos")
+os.makedirs(videos_dir, exist_ok=True)
+
 browser = Browser(
+    # Use Playwright-managed browser (no CDP URL) with our Chrome executable
     executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     user_data_dir=os.path.expanduser("~/Library/Application Support/Google/Chrome"),
-    profile_directory="Default",  # Use 'Profile 1', 'Profile 2', etc. if needed
+    profile_directory="Default",
     headless=False,
     # Add wait times to reduce frame access errors during navigation
     wait_between_actions=1.0,  # Wait 1 second between actions
@@ -39,6 +62,9 @@ browser = Browser(
     max_iframes=10,  # Limit number of iframes processed
     max_iframe_depth=2,  # Limit iframe nesting depth
     cross_origin_iframes=False,  # Disable cross-origin iframe processing (reduces errors)
+    # IMPORTANT: enable Playwright video recording to the shared videos directory
+    record_video_dir=videos_dir,
+    record_video_size={"width": 1280, "height": 720},
 )
 
 
@@ -47,44 +73,23 @@ browser = Browser(
 # -------------------------
 
 VACATION_GOAL = f"""
-You are a professional travel agent.
+You are a weather assistant.
 
-Plan a complete vacation automatically:
-- Origin: New York City (NYC)
-- Destination: Paris, France
-- Duration: 7 days
-- Travel dates: Sometime in June 2026
-- Budget: Mid-range
+Find the current weather automatically:
+Location: New York City, NY
 
-Start by navigating to {START_URL}
+Start at {START_URL}
 
 Your task:
-1. Search for and collect 2-3 flight options from NYC to Paris for June 2026, including:
-   - Airline names
-   - Prices
-   - Departure/arrival times
-   - Flight duration
+Retrieve the current weather conditions for New York City.
 
-2. Search for and collect 2-3 hotel/accommodation options in Paris, including:
-   - Hotel names
-   - Prices per night
-   - Ratings/reviews
-   - Location
+Report ONLY:
+Current temperature.
+Wind speed.
 
-3. Search for and suggest 5-7 activities/attractions to do in Paris during the 7-day trip, including:
-   - Activity names
-   - Brief descriptions
-   - Any relevant details (hours, prices if available)
-
-4. Create a final summary with:
-   - Recommended flight option
-   - Recommended accommodation option
-   - Day-by-day activity itinerary for 7 days
-   - Estimated total trip cost
-
-Do NOT ask for user input - use the information above.
-Do NOT book anything - just research and provide a complete plan.
-Stop once you've provided the comprehensive vacation plan summary.
+Do NOT ask for user input.
+Do NOT provide forecasts or extra details.
+Stop once the current temperature and feels-like temperature are reported.
 """
 
 
@@ -93,7 +98,7 @@ Stop once you've provided the comprehensive vacation plan summary.
 # -------------------------
 
 monitor = SentricMonitor(
-    api_key="sk_Re3vUsyiOZLmFPCnrtiKQhBd042dqcyYugwt9juJev8",
+    api_key="sk_05eQsxgQ2lP7yRw5gpEpbDm-eOpMGc2qt5bUQpSFuno",
     project_id="proj_demo",
     base_url="http://localhost:8000",
 )
@@ -128,7 +133,7 @@ agent = Agent(
 
 
 async def main():
-    print("🌴 Vacation Planning Agent Started")
+    print("🌤️ Weather Agent Started")
     print("⚠️  Make sure Chrome is fully closed before running!\n")
 
     # Validate Sentric API key BEFORE starting browser
@@ -146,13 +151,22 @@ async def main():
 
             result = await agent.run()
 
-            print("\n✅ Vacation Planning Completed")
+            print("\n✅ Weather Check Completed")
             print("================================")
             # Only print final_answer if it exists (may not be present if agent failed)
-            if hasattr(result, 'final_answer') and result.final_answer:
+            if hasattr(result, "final_answer") and result.final_answer:
                 print(result.final_answer)
             else:
-                print("Agent execution completed. Check Sentric dashboard for actions and reasoning.")
+                print(
+                    "Agent execution completed. Check Sentric dashboard for actions, reasoning, and video replay."
+                )
+
+            # Close the browser inside the monitor context so Playwright
+            # can flush and finalize the recorded video before Sentric ends the run
+            try:
+                await browser.close()
+            except Exception:
+                pass
     except ValueError as e:
         # API key validation failed - don't start browser
         print(f"\n❌ Sentric API key validation failed")
@@ -162,10 +176,10 @@ async def main():
         print(f"\n❌ Agent execution failed: {e}")
         raise
     finally:
-        # Make sure browser is closed even if there's an error
+        # Fallback: ensure browser is closed even if something went wrong earlier
         try:
             await browser.close()
-        except:
+        except Exception:
             pass
 
 

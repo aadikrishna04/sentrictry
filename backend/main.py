@@ -18,19 +18,33 @@ from fastapi import (
     WebSocketDisconnect,
     Header,
     Cookie,
+    File,
+    UploadFile,
+    Form,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse
 from jose import JWTError, jwt
 import bcrypt
 from datetime import datetime, timedelta
 import aiosqlite
 import secrets
+import os
+from pathlib import Path
+import shutil
 
 # How long before a "running" run is considered stale and marked as failed
 STALE_RUN_TIMEOUT_SECONDS = 30  # 30 seconds without activity = stale
 
 from database import init_db, seed_demo_data, get_db, DB_PATH
+
+# Project root = one level up from backend/ directory
+ROOT_DIR = Path(__file__).resolve().parents[1]
+# Video storage directory at project root
+VIDEOS_DIR = ROOT_DIR / "videos"
+VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 from models import (
     RunStartRequest,
     RunStartResponse,
@@ -257,8 +271,49 @@ async def start_run(request: RunStartRequest, auth: dict = Depends(verify_api_ke
 
 @app.post("/runs/{run_id}/end")
 async def end_run(
-    run_id: str, request: RunEndRequest, auth: dict = Depends(verify_api_key)
+    run_id: str,
+    req: Request,
+    auth: dict = Depends(verify_api_key),
 ):
+    # Support both JSON (backward compatibility) and Form data (for video upload)
+    content_type = req.headers.get("content-type", "")
+    
+    run_status = None
+    video_start_time = None
+    laminar_trace_id = None
+    video = None
+    video_path = None
+    
+    if "multipart/form-data" in content_type:
+        # Form data with potential video upload
+        form = await req.form()
+        run_status = form.get("status")
+        video_start_time = form.get("video_start_time")
+        laminar_trace_id = form.get("laminar_trace_id")
+        video = form.get("video")
+        if video and hasattr(video, "file"):
+            # Save video file
+            try:
+                video_filename = f"{run_id}.webm"
+                video_path = str(VIDEOS_DIR / video_filename)
+                with open(video_path, "wb") as f:
+                    content = await video.read()
+                    f.write(content)
+                print(f"[Sentric] Video saved: {video_path}")
+            except Exception as e:
+                print(f"[Sentric] Warning: Failed to save video: {e}")
+    else:
+        # JSON data
+        try:
+            data = await req.json()
+            run_status = data.get("status")
+            video_start_time = data.get("video_start_time")
+            laminar_trace_id = data.get("laminar_trace_id")
+        except:
+            pass
+    
+    if not run_status:
+        raise HTTPException(status_code=400, detail="Status is required")
     async with aiosqlite.connect(DB_PATH) as db:
         # Verify run exists and belongs to project
         cursor = await db.execute(
@@ -268,11 +323,27 @@ async def end_run(
         if not await cursor.fetchone():
             raise HTTPException(status_code=404, detail="Run not found")
 
-        # Update run status
-        await db.execute(
-            "UPDATE runs SET status = ?, end_time = ? WHERE id = ?",
-            (request.status, datetime.utcnow().isoformat(), run_id),
-        )
+        # Update run status and video info
+        update_query = "UPDATE runs SET status = ?, end_time = ?"
+        update_params = [run_status, datetime.utcnow().isoformat()]
+        
+        if video_path:
+            update_query += ", video_path = ?"
+            update_params.append(video_path)
+        
+        if video_start_time:
+            update_query += ", video_start_time = ?"
+            update_params.append(video_start_time)
+        
+        if laminar_trace_id:
+            update_query += ", laminar_trace_id = ?"
+            update_params.append(laminar_trace_id)
+            print(f"[Sentric] Laminar trace ID stored: {laminar_trace_id}")
+        
+        update_query += " WHERE id = ?"
+        update_params.append(run_id)
+        
+        await db.execute(update_query, tuple(update_params))
 
         # Fetch all events for analysis
         cursor = await db.execute(
@@ -320,19 +391,31 @@ async def post_event(run_id: str, event: Event, auth: dict = Depends(verify_api_
             )
 
     timestamp = event.timestamp or datetime.utcnow().isoformat()
+    
+    # Extract video_timestamp from event if present
+    video_timestamp = getattr(event, "video_timestamp", None)
+    if hasattr(event, "__dict__") and "video_timestamp" in event.__dict__:
+        video_timestamp = event.__dict__["video_timestamp"]
 
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO events (run_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
-            (run_id, event.type, json.dumps(event.payload), timestamp),
-        )
+        if video_timestamp is not None:
+            await db.execute(
+                "INSERT INTO events (run_id, type, payload, timestamp, video_timestamp) VALUES (?, ?, ?, ?, ?)",
+                (run_id, event.type, json.dumps(event.payload), timestamp, video_timestamp),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO events (run_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
+                (run_id, event.type, json.dumps(event.payload), timestamp),
+            )
         await db.commit()
 
     # Broadcast to WebSocket subscribers
     if run_id in active_connections:
-        message = json.dumps(
-            {"type": event.type, "payload": event.payload, "timestamp": timestamp}
-        )
+        message_data = {"type": event.type, "payload": event.payload, "timestamp": timestamp}
+        if video_timestamp is not None:
+            message_data["video_timestamp"] = video_timestamp
+        message = json.dumps(message_data)
         for ws in active_connections[run_id]:
             try:
                 await ws.send_text(message)
@@ -430,11 +513,18 @@ async def websocket_endpoint(websocket: WebSocket, run_id: str):
             timestamp = event.get("timestamp") or datetime.utcnow().isoformat()
 
             # Store event
+            video_timestamp = event.get("video_timestamp")
             async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute(
-                    "INSERT INTO events (run_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
-                    (run_id, event["type"], json.dumps(event["payload"]), timestamp),
-                )
+                if video_timestamp is not None:
+                    await db.execute(
+                        "INSERT INTO events (run_id, type, payload, timestamp, video_timestamp) VALUES (?, ?, ?, ?, ?)",
+                        (run_id, event["type"], json.dumps(event["payload"]), timestamp, video_timestamp),
+                    )
+                else:
+                    await db.execute(
+                        "INSERT INTO events (run_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
+                        (run_id, event["type"], json.dumps(event["payload"]), timestamp),
+                    )
                 await db.commit()
 
             # Broadcast to other subscribers (for dashboard)
@@ -713,20 +803,30 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
         run = await cursor.fetchone()
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
+        
+        # Convert to dict for easier access
+        run_dict = dict(run)
 
         # Get events
         cursor = await db.execute(
-            "SELECT type, payload, timestamp FROM events WHERE run_id = ? ORDER BY timestamp",
+            "SELECT type, payload, timestamp, video_timestamp FROM events WHERE run_id = ? ORDER BY timestamp",
             (run_id,),
         )
-        events = [
-            {
+        events = []
+        for r in await cursor.fetchall():
+            event_data = {
                 "type": r["type"],
                 "payload": json.loads(r["payload"]),
                 "timestamp": r["timestamp"],
             }
-            for r in await cursor.fetchall()
-        ]
+            if r["video_timestamp"] is not None:
+                event_data["video_timestamp"] = r["video_timestamp"]
+            events.append(event_data)
+        
+        # Get video info from run
+        video_path = run_dict.get("video_path")
+        video_start_time = run_dict.get("video_start_time")
+        laminar_trace_id = run_dict.get("laminar_trace_id")
 
         # Get findings
         cursor = await db.execute(
@@ -743,16 +843,64 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
             for r in await cursor.fetchall()
         ]
 
-        return {
-            "id": run["id"],
-            "project_id": run["project_id"],
-            "task": run["task"],
-            "status": run["status"],
-            "start_time": run["start_time"],
-            "end_time": run["end_time"],
+        result = {
+            "id": run_dict["id"],
+            "project_id": run_dict["project_id"],
+            "task": run_dict["task"],
+            "status": run_dict["status"],
+            "start_time": run_dict["start_time"],
+            "end_time": run_dict["end_time"],
             "events": events,
             "findings": findings,
         }
+        
+        # Add video info if available
+        if video_path:
+            result["video_path"] = video_path
+        if video_start_time:
+            result["video_start_time"] = video_start_time
+        if laminar_trace_id:
+            result["laminar_trace_id"] = laminar_trace_id
+        
+        return result
+
+
+@app.get("/api/runs/{run_id}/video")
+async def get_run_video(run_id: str, user: dict = Depends(get_current_user)):
+    """Serve video file for a run."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Get run and verify user owns it
+        cursor = await db.execute(
+            """
+            SELECT r.video_path FROM runs r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.id = ? AND p.user_id = ?
+        """,
+            (run_id, user["id"]),
+        )
+        run = await cursor.fetchone()
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        
+        video_path = run["video_path"]
+        if not video_path or not os.path.exists(video_path):
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        # Infer media type from file extension
+        ext = Path(video_path).suffix.lower()
+        if ext == ".mp4":
+            media_type = "video/mp4"
+        elif ext == ".webm":
+            media_type = "video/webm"
+        else:
+            media_type = "application/octet-stream"
+
+        return FileResponse(
+            video_path,
+            media_type=media_type,
+            filename=f"{run_id}{ext or ''}",
+        )
 
 
 @app.get("/api/health")

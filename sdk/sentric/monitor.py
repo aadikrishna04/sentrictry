@@ -3,12 +3,23 @@
 import asyncio
 import json
 import threading
+import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Callable, Optional
 from queue import Queue
+from pathlib import Path
+import subprocess
+import sys
 import websocket
 import requests
+
+
+# Project root = two levels up from this file (sdk/sentric/ -> sdk/ -> project root)
+ROOT_DIR = Path(__file__).resolve().parents[2]
+VIDEOS_DIR = ROOT_DIR / "videos"
+VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class SentricMonitor:
@@ -42,6 +53,14 @@ class SentricMonitor:
         self._original_callbacks: dict = {}
         self._current_url: str = ""
         self._current_step: int = 0
+        self._video_start_time: Optional[float] = None
+        self._video_path: Optional[str] = None
+        self._browser_context: Optional[Any] = None
+        # Optional external real-time screen recorder
+        self._realtime_recorder: Optional[subprocess.Popen] = None
+        self._realtime_video_path: Optional[str] = None
+        # Laminar trace ID for browser session recording
+        self._laminar_trace_id: Optional[str] = None
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}"}
@@ -78,6 +97,143 @@ class SentricMonitor:
         except Exception as e:
             raise ValueError(f"Failed to start Sentric run: {e}")
 
+    def _start_video_recording(self, agent: Any) -> None:
+        """Start video timing for the browser session.
+
+        Actual pixels are recorded by BrowserUse's own video recorder
+        (enabled via record_video_dir on the Browser). Here we just
+        start a timer so we can compute relative timestamps.
+        """
+        try:
+            self._video_start_time = time.time()
+            print(f"[Sentric] Video timing started for run {self.run_id}")
+
+            # Optional: start an external real-time screen recording using ffmpeg
+            # Enable by setting SENTRIC_REALTIME_VIDEO=1 in the environment.
+            if os.getenv("SENTRIC_REALTIME_VIDEO") == "1":
+                try:
+                    # Record full screen to a run-scoped MP4 in the shared videos dir
+                    realtime_path = VIDEOS_DIR / f"{self.run_id}_realtime.mp4"
+                    self._realtime_video_path = str(realtime_path)
+
+                    if sys.platform == "darwin":
+                        # macOS screen capture via avfoundation.
+                        # Default to capturing laptop screen (Capture screen 0).
+                        # You can override with SENTRIC_REALTIME_DEVICE, e.g. "4:none".
+                        device = os.getenv("SENTRIC_REALTIME_DEVICE", "3:none")
+                        cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "avfoundation",
+                            "-framerate",
+                            "30",
+                            "-i",
+                            device,
+                            str(realtime_path),
+                        ]
+                    elif sys.platform.startswith("linux"):
+                        # Common Linux setup using X11; adjust DISPLAY/size if needed.
+                        cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "x11grab",
+                            "-framerate",
+                            "30",
+                            "-i",
+                            os.environ.get("DISPLAY", ":0.0"),
+                            str(realtime_path),
+                        ]
+                    elif sys.platform.startswith("win"):
+                        # Windows desktop capture via gdigrab.
+                        cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "gdigrab",
+                            "-framerate",
+                            "30",
+                            "-i",
+                            "desktop",
+                            str(realtime_path),
+                        ]
+                    else:
+                        cmd = None
+
+                    if cmd is not None:
+                        self._realtime_recorder = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        print(
+                            f"[Sentric] Started external real-time recorder for run {self.run_id}: {realtime_path}"
+                        )
+                    else:
+                        print(
+                            f"[Sentric] Real-time recording not supported on platform {sys.platform}"
+                        )
+                except Exception as e:
+                    print(
+                        f"[Sentric] Warning: Failed to start external real-time recorder: {e}"
+                    )
+
+        except Exception as e:
+            print(f"[Sentric] Warning: Failed to start video timing: {e}")
+            self._video_start_time = time.time()
+
+    def _stop_video_recording(self) -> Optional[str]:
+        """Stop video recording and return the video path."""
+        if not self._video_start_time:
+            return None
+
+        try:
+            # Wait a bit for video to finish writing
+            time.sleep(0.5)
+
+            # Stop external real-time recorder if running
+            if self._realtime_recorder:
+                try:
+                    self._realtime_recorder.terminate()
+                    self._realtime_recorder.wait(timeout=5)
+                    print(
+                        f"[Sentric] Stopped external real-time recorder for run {self.run_id}"
+                    )
+                except Exception as e:
+                    print(
+                        f"[Sentric] Warning: Error stopping real-time recorder: {e}"
+                    )
+                finally:
+                    self._realtime_recorder = None
+
+            # Prefer the external real-time recording if it exists
+            if self._realtime_video_path and os.path.exists(self._realtime_video_path):
+                return self._realtime_video_path
+
+            # Next, if we have an explicit BrowserUse video path and it exists, use it.
+            if self._video_path and os.path.exists(self._video_path):
+                return self._video_path
+
+            # Otherwise, look for the most recent video file in the shared videos dir.
+            try:
+                candidates: list[Path] = []
+                for ext in ("*.mp4", "*.webm"):
+                    candidates.extend(VIDEOS_DIR.glob(ext))
+
+                if candidates:
+                    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+                    return str(latest)
+            except Exception as e:
+                print(f"[Sentric] Warning: Could not search videos dir for recording: {e}")
+
+            # Fallback: return whatever path we tracked, even if it doesn't exist.
+            return self._video_path
+
+        except Exception as e:
+            print(f"[Sentric] Warning: Error stopping video recording: {e}")
+            return self._video_path if self._video_path else None
+
     def _end_run(self, status: str = "completed") -> None:
         """End the current run."""
         if not self.run_id:
@@ -99,19 +255,96 @@ class SentricMonitor:
         if status == "cancelled":
             status = "failed"
 
+        # Stop video recording and upload video
+        video_path = self._stop_video_recording()
+        video_start_time = None
+        if self._video_start_time:
+            video_start_time = datetime.fromtimestamp(self._video_start_time).isoformat()
+        
+        # Try to get Laminar trace ID if available
+        try:
+            from lmnr import Laminar
+            
+            # Method 1: Try to get current trace from Laminar's context
+            trace_id = None
+            if hasattr(Laminar, "get_current_trace"):
+                try:
+                    trace = Laminar.get_current_trace()
+                    if trace:
+                        if hasattr(trace, "id"):
+                            trace_id = str(trace.id)
+                        elif hasattr(trace, "trace_id"):
+                            trace_id = str(trace.trace_id)
+                except:
+                    pass
+            
+            # Method 2: Check internal state
+            if not trace_id:
+                if hasattr(Laminar, "_current_trace") and Laminar._current_trace:
+                    trace = Laminar._current_trace
+                    if hasattr(trace, "id"):
+                        trace_id = str(trace.id)
+                    elif hasattr(trace, "trace_id"):
+                        trace_id = str(trace.trace_id)
+            
+            # Method 3: Check if there's a trace context manager
+            if not trace_id:
+                if hasattr(Laminar, "_trace_context"):
+                    ctx = Laminar._trace_context
+                    if ctx and hasattr(ctx, "trace_id"):
+                        trace_id = str(ctx.trace_id)
+            
+            if trace_id:
+                self._laminar_trace_id = trace_id
+                print(f"[Sentric] Laminar trace ID captured: {trace_id}")
+        except (ImportError, AttributeError, Exception) as e:
+            # Laminar not available or trace ID not accessible - that's okay
+            # The trace will still be in Laminar's system, just not linked in Sentric
+            pass
+
+        # Upload video if it exists
+        video_file = None
+        if video_path and os.path.exists(video_path):
+            try:
+                video_file = open(video_path, "rb")
+            except Exception as e:
+                print(f"[Sentric] Warning: Could not read video file: {e}")
+
         try:
             url = f"{self.base_url}/runs/{self.run_id}/end"
-            payload = {"status": status}
             headers = self._headers()
 
             print(f"[Sentric] POST {url} with status={status}, run_id={self.run_id}")
 
-            resp = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=10,
-            )
+            if video_file:
+                # Upload video with the end request using Form data
+                files = {"video": ("video.webm", video_file, "video/webm")}
+                data = {"status": status}
+                if video_start_time:
+                    data["video_start_time"] = video_start_time
+                if self._laminar_trace_id:
+                    data["laminar_trace_id"] = self._laminar_trace_id
+                resp = requests.post(
+                    url,
+                    data=data,
+                    files=files,
+                    headers=headers,
+                    timeout=60,  # Longer timeout for video upload
+                )
+                video_file.close()
+            else:
+                # No video, use JSON
+                payload = {"status": status}
+                if video_start_time:
+                    payload["video_start_time"] = video_start_time
+                if self._laminar_trace_id:
+                    payload["laminar_trace_id"] = self._laminar_trace_id
+                resp = requests.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=10,
+                )
 
             print(f"[Sentric] Response status code: {resp.status_code}")
 
@@ -148,7 +381,7 @@ class SentricMonitor:
 
             traceback.print_exc()
         except ValueError as e:
-            # Validation or backend errors
+            # Validation or backend errors – log but don't re-raise so agent shutdown can finish cleanly.
             print(f"[Sentric] ❌ ERROR: Failed to end run - {e}")
             print(
                 f"[Sentric] Response body: {resp.text if 'resp' in locals() else 'N/A'}"
@@ -196,11 +429,18 @@ class SentricMonitor:
 
     def _send_event(self, event_type: str, payload: dict) -> None:
         """Queue an event for sending (non-blocking)."""
+        now = time.time()
+        video_timestamp = None
+        if self._video_start_time is not None:
+            video_timestamp = now - self._video_start_time
+        
         event = {
             "type": event_type,
             "payload": payload,
             "timestamp": datetime.utcnow().isoformat(),
         }
+        if video_timestamp is not None:
+            event["video_timestamp"] = video_timestamp
         self._event_queue.put(event)
 
     def _sender_loop(self) -> None:
@@ -496,6 +736,9 @@ class SentricMonitor:
 
         # Register callbacks
         self._register_callbacks(agent)
+
+        # Start video recording
+        self._start_video_recording(agent)
 
         status = (
             "completed"  # Default to completed, will be updated if exception occurs
