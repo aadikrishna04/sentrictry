@@ -86,6 +86,7 @@ htmlcov/
 *.tsbuildinfo
 
 # Next.js
+**/.next/
 .next/
 out/
 .vercel

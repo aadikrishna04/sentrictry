@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Configure browser-use logging level BEFORE importing browser_use
@@ -22,14 +23,16 @@ from sentric import SentricMonitor
 LAMINAR_AVAILABLE = False
 try:
     from lmnr import Laminar, observe
-    
+
     laminar_api_key = os.getenv("LMNR_PROJECT_API_KEY")
     if laminar_api_key:
         Laminar.initialize(project_api_key=laminar_api_key)
         LAMINAR_AVAILABLE = True
         print("[Laminar] ✅ Initialized - browser session recordings will be captured")
     else:
-        print("[Laminar] ⚠️  LMNR_PROJECT_API_KEY not set - skipping Laminar integration")
+        print(
+            "[Laminar] ⚠️  LMNR_PROJECT_API_KEY not set - skipping Laminar integration"
+        )
         print("[Laminar]    To enable: export LMNR_PROJECT_API_KEY=<your-key>")
         print("[Laminar]    Get your key from: https://laminar.ai")
 except ImportError:
@@ -104,7 +107,7 @@ Stop once the current temperature and feels-like temperature are reported.
 # -------------------------
 
 monitor = SentricMonitor(
-    api_key="sk_05eQsxgQ2lP7yRw5gpEpbDm-eOpMGc2qt5bUQpSFuno",
+    api_key="sk_-YCYd93Db69LCIEUKdVGG0G6sAEuWniyIe1UD8bqjSs",
     project_id="proj_demo",
     base_url="http://localhost:8000",
 )
@@ -143,9 +146,7 @@ async def run_agent_core():
     # Start Sentric monitoring - validates API key immediately
     async with monitor.wrap(agent):
         print("✅ Sentric API key validated")
-        print(
-            "The browser will open with your logged-in sessions and extensions...\n"
-        )
+        print("The browser will open with your logged-in sessions and extensions...\n")
 
         # Start browser only after Sentric validation succeeds
         await browser.start()
@@ -168,7 +169,7 @@ async def run_agent_core():
             await browser.close()
         except Exception:
             pass
-        
+
         # Get and print Laminar trace ID at the very end (while still in observe span context)
         trace_id = None
         if LAMINAR_AVAILABLE:
@@ -177,12 +178,14 @@ async def run_agent_core():
                 if trace_id is not None:
                     print(f"\n🎥 Laminar Trace ID: {trace_id}")
                 else:
-                    print("\n⚠️  Laminar trace ID not available (may be outside span context)")
+                    print(
+                        "\n⚠️  Laminar trace ID not available (may be outside span context)"
+                    )
             except Exception as e:
                 print(f"\n⚠️  Failed to get Laminar trace ID: {e}")
         else:
             trace_id = None  # Explicitly set to None if Laminar not available
-        
+
         return result, trace_id
 
 
@@ -208,7 +211,9 @@ async def main():
         except TypeError as e:
             # If observe decorator doesn't work with async, fall back to manual span creation
             if "async" in str(e).lower() or "awaitable" in str(e).lower():
-                print("[Laminar] ⚠️  observe decorator doesn't support async, trying manual span...")
+                print(
+                    "[Laminar] ⚠️  observe decorator doesn't support async, trying manual span..."
+                )
                 # Try using manual span creation as fallback
                 if LAMINAR_AVAILABLE and hasattr(Laminar, "start_active_span"):
                     span = Laminar.start_active_span(name="agent_execution")
@@ -221,7 +226,7 @@ async def main():
                     result, trace_id = await run_agent_core()
             else:
                 raise
-        
+
         # If we didn't get trace ID above (outside span context), try again here
         if LAMINAR_AVAILABLE and trace_id is None:
             try:
@@ -232,7 +237,7 @@ async def main():
                 pass
         elif not LAMINAR_AVAILABLE:
             print("\n⚠️  Laminar not available - trace ID unavailable")
-            
+
     except ValueError as e:
         # API key validation failed - don't start browser
         print(f"\n❌ Sentric API key validation failed")

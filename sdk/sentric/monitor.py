@@ -65,6 +65,48 @@ class SentricMonitor:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}"}
 
+    def _make_laminar_trace_public(self, trace_id: str) -> None:
+        """Make a Laminar trace public if credentials are configured.
+
+        This is optional - if LAMINAR_PROJECT_ID and LAMINAR_SESSION_TOKEN
+        are not set, this will silently skip making the trace public.
+        """
+        # Check if credentials are configured
+        laminar_project_id = os.getenv("LAMINAR_PROJECT_ID")
+        laminar_session_token = os.getenv("LAMINAR_SESSION_TOKEN")
+
+        if not laminar_project_id or not laminar_session_token:
+            # Credentials not set - silently skip (optional feature)
+            return
+
+        try:
+            url = f"https://laminar.sh/api/projects/{laminar_project_id}/traces/{trace_id}"
+
+            cookies = {"__Secure-next-auth.session-token": laminar_session_token}
+
+            headers = {
+                "Content-Type": "application/json",
+                "Origin": "https://laminar.sh",
+                "Referer": f"https://laminar.sh/project/{laminar_project_id}/traces",
+            }
+
+            # API expects "visibility" field with value "public" or "private" (string, not boolean)
+            payload = {"visibility": "public"}
+
+            r = requests.put(
+                url,
+                json=payload,
+                cookies=cookies,
+                headers=headers,
+                timeout=10,
+            )
+
+            r.raise_for_status()
+            print(f"[Sentric] ✅ Laminar trace {trace_id} is now public")
+        except Exception as e:
+            # Failed to make public - log but don't fail the run
+            print(f"[Sentric] ⚠️  Could not make Laminar trace public: {e}")
+
     def _start_run(self, task: Optional[str] = None) -> None:
         """Start a new run on the Sentric backend."""
         try:
@@ -201,9 +243,7 @@ class SentricMonitor:
                         f"[Sentric] Stopped external real-time recorder for run {self.run_id}"
                     )
                 except Exception as e:
-                    print(
-                        f"[Sentric] Warning: Error stopping real-time recorder: {e}"
-                    )
+                    print(f"[Sentric] Warning: Error stopping real-time recorder: {e}")
                 finally:
                     self._realtime_recorder = None
 
@@ -225,7 +265,9 @@ class SentricMonitor:
                     latest = max(candidates, key=lambda p: p.stat().st_mtime)
                     return str(latest)
             except Exception as e:
-                print(f"[Sentric] Warning: Could not search videos dir for recording: {e}")
+                print(
+                    f"[Sentric] Warning: Could not search videos dir for recording: {e}"
+                )
 
             # Fallback: return whatever path we tracked, even if it doesn't exist.
             return self._video_path
@@ -259,12 +301,14 @@ class SentricMonitor:
         video_path = self._stop_video_recording()
         video_start_time = None
         if self._video_start_time:
-            video_start_time = datetime.fromtimestamp(self._video_start_time).isoformat()
-        
+            video_start_time = datetime.fromtimestamp(
+                self._video_start_time
+            ).isoformat()
+
         # Try to get Laminar trace ID if available
         try:
             from lmnr import Laminar
-            
+
             # Use the proper API method to get trace ID
             trace_id_obj = Laminar.get_trace_id()
             if trace_id_obj is not None:
@@ -272,6 +316,9 @@ class SentricMonitor:
                 trace_id = str(trace_id_obj)
                 self._laminar_trace_id = trace_id
                 print(f"[Sentric] Laminar trace ID captured: {trace_id}")
+
+                # Automatically make trace public if credentials are configured
+                self._make_laminar_trace_public(trace_id)
         except ImportError:
             # Laminar not available - that's okay
             # The trace will still be in Laminar's system, just not linked in Sentric
@@ -412,7 +459,7 @@ class SentricMonitor:
         video_timestamp = None
         if self._video_start_time is not None:
             video_timestamp = now - self._video_start_time
-        
+
         event = {
             "type": event_type,
             "payload": payload,
