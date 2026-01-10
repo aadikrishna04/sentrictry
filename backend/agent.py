@@ -104,7 +104,7 @@ Stop once the current temperature and feels-like temperature are reported.
 # -------------------------
 
 monitor = SentricMonitor(
-    api_key="sk_Yuz6UrRsMcTKMdZvSWeAfOf3lhsduoiDLSgrWujPjVw",
+    api_key="sk_05eQsxgQ2lP7yRw5gpEpbDm-eOpMGc2qt5bUQpSFuno",
     project_id="proj_demo",
     base_url="http://localhost:8000",
 )

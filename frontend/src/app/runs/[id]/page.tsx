@@ -254,12 +254,10 @@ export default function RunDetailPage() {
   }
 
   function getLaminarUrl(traceId: string, timestamp?: number): string {
-    // Laminar Cloud URL format (adjust if using self-hosted)
-    // Format: https://app.laminar.ai/projects/{project_id}/traces/{trace_id}
+    // Laminar URL format: https://laminar.sh/shared/traces/{trace_id}
     // With timestamp: add ?t={seconds} query param
-    const baseUrl = process.env.NEXT_PUBLIC_LAMINAR_URL || "https://app.laminar.ai";
-    const projectId = process.env.NEXT_PUBLIC_LAMINAR_PROJECT_ID || "";
-    let url = `${baseUrl}/projects/${projectId}/traces/${traceId}`;
+    const baseUrl = process.env.NEXT_PUBLIC_LAMINAR_URL || "https://laminar.sh";
+    let url = `${baseUrl}/shared/traces/${traceId}`;
     if (timestamp !== undefined) {
       url += `?t=${timestamp.toFixed(1)}`;
     }
