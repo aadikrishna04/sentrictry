@@ -265,41 +265,20 @@ class SentricMonitor:
         try:
             from lmnr import Laminar
             
-            # Method 1: Try to get current trace from Laminar's context
-            trace_id = None
-            if hasattr(Laminar, "get_current_trace"):
-                try:
-                    trace = Laminar.get_current_trace()
-                    if trace:
-                        if hasattr(trace, "id"):
-                            trace_id = str(trace.id)
-                        elif hasattr(trace, "trace_id"):
-                            trace_id = str(trace.trace_id)
-                except:
-                    pass
-            
-            # Method 2: Check internal state
-            if not trace_id:
-                if hasattr(Laminar, "_current_trace") and Laminar._current_trace:
-                    trace = Laminar._current_trace
-                    if hasattr(trace, "id"):
-                        trace_id = str(trace.id)
-                    elif hasattr(trace, "trace_id"):
-                        trace_id = str(trace.trace_id)
-            
-            # Method 3: Check if there's a trace context manager
-            if not trace_id:
-                if hasattr(Laminar, "_trace_context"):
-                    ctx = Laminar._trace_context
-                    if ctx and hasattr(ctx, "trace_id"):
-                        trace_id = str(ctx.trace_id)
-            
-            if trace_id:
+            # Use the proper API method to get trace ID
+            trace_id_obj = Laminar.get_trace_id()
+            if trace_id_obj is not None:
+                # Convert UUID to string if needed
+                trace_id = str(trace_id_obj)
                 self._laminar_trace_id = trace_id
                 print(f"[Sentric] Laminar trace ID captured: {trace_id}")
-        except (ImportError, AttributeError, Exception) as e:
-            # Laminar not available or trace ID not accessible - that's okay
+        except ImportError:
+            # Laminar not available - that's okay
             # The trace will still be in Laminar's system, just not linked in Sentric
+            pass
+        except (AttributeError, Exception) as e:
+            # Laminar available but get_trace_id failed (might be outside span context)
+            # This is okay - the trace will still be in Laminar's system
             pass
 
         # Upload video if it exists

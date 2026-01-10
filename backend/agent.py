@@ -1,6 +1,8 @@
 import asyncio
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configure browser-use logging level BEFORE importing browser_use
 # Options: 'result' (minimal), 'info' (default, shows actions/warnings), 'debug' (verbose)
@@ -17,12 +19,14 @@ from sentric import SentricMonitor
 
 # Initialize Laminar for browser session recording
 # This automatically captures full real-time browser recordings synced with agent steps
+LAMINAR_AVAILABLE = False
 try:
-    from lmnr import Laminar
+    from lmnr import Laminar, observe
     
     laminar_api_key = os.getenv("LMNR_PROJECT_API_KEY")
     if laminar_api_key:
         Laminar.initialize(project_api_key=laminar_api_key)
+        LAMINAR_AVAILABLE = True
         print("[Laminar] ✅ Initialized - browser session recordings will be captured")
     else:
         print("[Laminar] ⚠️  LMNR_PROJECT_API_KEY not set - skipping Laminar integration")
@@ -31,15 +35,17 @@ try:
 except ImportError:
     print("[Laminar] ⚠️  lmnr package not installed - skipping Laminar integration")
     print("[Laminar]    Install with: pip install lmnr")
+    observe = None
 except Exception as e:
     print(f"[Laminar] ⚠️  Failed to initialize Laminar: {e}")
+    observe = None
 
 
 # -------------------------
 # CONFIG
 # -------------------------
 
-OPENAI_API_KEY = ""  # TODO: Replace with your OpenAI API key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 LLM_MODEL = "gpt-5-mini"  # or any supported model
 START_URL = "https://www.google.com"
 
@@ -98,7 +104,7 @@ Stop once the current temperature and feels-like temperature are reported.
 # -------------------------
 
 monitor = SentricMonitor(
-    api_key="sk_05eQsxgQ2lP7yRw5gpEpbDm-eOpMGc2qt5bUQpSFuno",
+    api_key="sk_Yuz6UrRsMcTKMdZvSWeAfOf3lhsduoiDLSgrWujPjVw",
     project_id="proj_demo",
     base_url="http://localhost:8000",
 )
@@ -132,6 +138,62 @@ agent = Agent(
 # -------------------------
 
 
+async def run_agent_core():
+    """Core agent execution logic. Gets trace ID at the end while span is still active."""
+    # Start Sentric monitoring - validates API key immediately
+    async with monitor.wrap(agent):
+        print("✅ Sentric API key validated")
+        print(
+            "The browser will open with your logged-in sessions and extensions...\n"
+        )
+
+        # Start browser only after Sentric validation succeeds
+        await browser.start()
+
+        result = await agent.run()
+
+        print("\n✅ Weather Check Completed")
+        print("================================")
+        # Only print final_answer if it exists (may not be present if agent failed)
+        if hasattr(result, "final_answer") and result.final_answer:
+            print(result.final_answer)
+        else:
+            print(
+                "Agent execution completed. Check Sentric dashboard for actions, reasoning, and video replay."
+            )
+
+        # Close the browser inside the monitor context so Playwright
+        # can flush and finalize the recorded video before Sentric ends the run
+        try:
+            await browser.close()
+        except Exception:
+            pass
+        
+        # Get and print Laminar trace ID at the very end (while still in observe span context)
+        trace_id = None
+        if LAMINAR_AVAILABLE:
+            try:
+                trace_id = Laminar.get_trace_id()
+                if trace_id is not None:
+                    print(f"\n🎥 Laminar Trace ID: {trace_id}")
+                else:
+                    print("\n⚠️  Laminar trace ID not available (may be outside span context)")
+            except Exception as e:
+                print(f"\n⚠️  Failed to get Laminar trace ID: {e}")
+        else:
+            trace_id = None  # Explicitly set to None if Laminar not available
+        
+        return result, trace_id
+
+
+# Create the observed version of run_agent_core if Laminar is available
+if LAMINAR_AVAILABLE and observe:
+    run_agent_with_observe = observe(name="agent_execution")(run_agent_core)
+else:
+    # No-op wrapper if Laminar not available
+    run_agent_with_observe = run_agent_core
+
+
 async def main():
     print("🌤️ Weather Agent Started")
     print("⚠️  Make sure Chrome is fully closed before running!\n")
@@ -139,34 +201,38 @@ async def main():
     # Validate Sentric API key BEFORE starting browser
     # This will raise ValueError if API key is invalid
     try:
-        # Start Sentric monitoring - validates API key immediately
-        async with monitor.wrap(agent):
-            print("✅ Sentric API key validated")
-            print(
-                "The browser will open with your logged-in sessions and extensions...\n"
-            )
-
-            # Start browser only after Sentric validation succeeds
-            await browser.start()
-
-            result = await agent.run()
-
-            print("\n✅ Weather Check Completed")
-            print("================================")
-            # Only print final_answer if it exists (may not be present if agent failed)
-            if hasattr(result, "final_answer") and result.final_answer:
-                print(result.final_answer)
+        # Run with observe span if available (observe decorator should handle async functions)
+        # Note: If observe doesn't support async, we'll handle the error below
+        try:
+            result, trace_id = await run_agent_with_observe()
+        except TypeError as e:
+            # If observe decorator doesn't work with async, fall back to manual span creation
+            if "async" in str(e).lower() or "awaitable" in str(e).lower():
+                print("[Laminar] ⚠️  observe decorator doesn't support async, trying manual span...")
+                # Try using manual span creation as fallback
+                if LAMINAR_AVAILABLE and hasattr(Laminar, "start_active_span"):
+                    span = Laminar.start_active_span(name="agent_execution")
+                    try:
+                        result, trace_id = await run_agent_core()
+                    finally:
+                        span.end()
+                else:
+                    # No Laminar, just run without it
+                    result, trace_id = await run_agent_core()
             else:
-                print(
-                    "Agent execution completed. Check Sentric dashboard for actions, reasoning, and video replay."
-                )
-
-            # Close the browser inside the monitor context so Playwright
-            # can flush and finalize the recorded video before Sentric ends the run
+                raise
+        
+        # If we didn't get trace ID above (outside span context), try again here
+        if LAMINAR_AVAILABLE and trace_id is None:
             try:
-                await browser.close()
+                trace_id = Laminar.get_trace_id()
+                if trace_id is not None:
+                    print(f"\n🎥 Laminar Trace ID (retrieved after span): {trace_id}")
             except Exception:
                 pass
+        elif not LAMINAR_AVAILABLE:
+            print("\n⚠️  Laminar not available - trace ID unavailable")
+            
     except ValueError as e:
         # API key validation failed - don't start browser
         print(f"\n❌ Sentric API key validation failed")
