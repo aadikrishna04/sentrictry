@@ -59,6 +59,8 @@ export default function RunDetailPage() {
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const prevStatusRef = useRef<string | null>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -105,9 +107,52 @@ export default function RunDetailPage() {
   }, [runId]);
 
   useEffect(() => {
-    // Auto-scroll to bottom when new events arrive
-    eventsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [run?.events.length]);
+    // Auto-scroll to bottom when new events arrive, but only if run is currently running
+    if (run?.status === "running") {
+      eventsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [run?.events.length, run?.status]);
+
+  // Poll for run updates while running to detect completion
+  useEffect(() => {
+    if (!run || run.status !== "running") return;
+
+    const interval = setInterval(() => {
+      fetchRun();
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [run?.status, runId]);
+
+  // Initialize prevStatusRef when run is first loaded
+  useEffect(() => {
+    if (run && prevStatusRef.current === null) {
+      prevStatusRef.current = run.status;
+    }
+  }, [run]);
+
+  // Scroll to top and show Laminar button when run completes
+  useEffect(() => {
+    if (!run) return;
+
+    const prevStatus = prevStatusRef.current;
+    const currentStatus = run.status;
+
+    // If status changed from "running" to completed/failed, scroll to top
+    if (
+      prevStatus === "running" &&
+      (currentStatus === "completed" || currentStatus === "failed")
+    ) {
+      // Scroll to top of the timeline container to show the Laminar button
+      if (timelineContainerRef.current) {
+        timelineContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+
+    prevStatusRef.current = currentStatus;
+  }, [run?.status]);
 
   async function fetchRun() {
     const token = localStorage.getItem("token");
@@ -193,7 +238,10 @@ export default function RunDetailPage() {
         if (!step.timestamp) {
           step.timestamp = event.timestamp;
         }
-        if (event.video_timestamp !== undefined && step.videoTimestamp === undefined) {
+        if (
+          event.video_timestamp !== undefined &&
+          step.videoTimestamp === undefined
+        ) {
           step.videoTimestamp = event.video_timestamp;
         }
       } else if (event.type === "action") {
@@ -213,7 +261,10 @@ export default function RunDetailPage() {
         const step = steps.get(stepNum)!;
         step.actions.push(event);
         // Use first action's video timestamp if step doesn't have one
-        if (event.video_timestamp !== undefined && step.videoTimestamp === undefined) {
+        if (
+          event.video_timestamp !== undefined &&
+          step.videoTimestamp === undefined
+        ) {
           step.videoTimestamp = event.video_timestamp;
         }
       } else {
@@ -235,7 +286,10 @@ export default function RunDetailPage() {
         if (content && !step.reasoning.memory) {
           step.reasoning.memory = content;
         }
-        if (event.video_timestamp !== undefined && step.videoTimestamp === undefined) {
+        if (
+          event.video_timestamp !== undefined &&
+          step.videoTimestamp === undefined
+        ) {
           step.videoTimestamp = event.video_timestamp;
         }
       }
@@ -329,48 +383,58 @@ export default function RunDetailPage() {
 
       <main style={styles.main}>
         {activeTab === "timeline" ? (
-          <div style={styles.timelineContainer}>
+          <div ref={timelineContainerRef} style={styles.timelineContainer}>
             {/* Laminar Recording Link - Show when Laminar trace is available */}
-            {run && (run.status === "completed" || run.status === "failed") && run.laminar_trace_id && (
-              <div style={styles.laminarContainer}>
-                <div style={styles.laminarHeader}>
-                  <span style={styles.laminarIcon}>🎥</span>
-                  <div style={styles.laminarContent}>
-                    <h3 style={styles.laminarTitle}>Full Browser Session Recording</h3>
-                    <p style={styles.laminarDescription}>
-                      View the complete real-time browser recording synced with agent steps in Laminar
-                    </p>
-                    <a
-                      href={getLaminarUrl(run.laminar_trace_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={styles.laminarButton}
-                    >
-                      Open in Laminar →
-                    </a>
+            {run &&
+              (run.status === "completed" || run.status === "failed") &&
+              run.laminar_trace_id && (
+                <div style={styles.laminarContainer}>
+                  <div style={styles.laminarHeader}>
+                    <span style={styles.laminarIcon}>🎥</span>
+                    <div style={styles.laminarContent}>
+                      <h3 style={styles.laminarTitle}>
+                        Full Browser Session Recording
+                      </h3>
+                      <p style={styles.laminarDescription}>
+                        View the complete real-time browser recording synced
+                        with agent steps in Laminar
+                      </p>
+                      <a
+                        href={getLaminarUrl(run.laminar_trace_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.laminarButton}
+                      >
+                        Open in Laminar →
+                      </a>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
             {/* Video Player - Show when run is completed or failed and video exists (fallback) */}
-            {run && (run.status === "completed" || run.status === "failed") && run.video_path && !run.laminar_trace_id && (
-              <div style={styles.videoContainer}>
-                <video
-                  ref={videoRef}
-                  controls
-                  style={styles.video}
-                  src={`${API_URL}/api/runs/${runId}/video`}
-                >
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-            )}
+            {run &&
+              (run.status === "completed" || run.status === "failed") &&
+              run.video_path &&
+              !run.laminar_trace_id && (
+                <div style={styles.videoContainer}>
+                  <video
+                    ref={videoRef}
+                    controls
+                    style={styles.video}
+                    src={`${API_URL}/api/runs/${runId}/video`}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              )}
             <div style={styles.timeline}>
               {run.events.length === 0 ? (
                 <div style={styles.empty}>
                   <p>No events yet</p>
                   {run.status === "running" && (
-                    <p style={styles.emptyHint}>Waiting for agent activity...</p>
+                    <p style={styles.emptyHint}>
+                      Waiting for agent activity...
+                    </p>
                   )}
                 </div>
               ) : (
@@ -382,27 +446,38 @@ export default function RunDetailPage() {
                         <span style={styles.stepTime}>
                           {formatTime(step.timestamp)}
                         </span>
-                        {step.videoTimestamp !== undefined && run && (run.status === "completed" || run.status === "failed") && (
-                          run.laminar_trace_id ? (
+                        {step.videoTimestamp !== undefined &&
+                          run &&
+                          (run.status === "completed" ||
+                            run.status === "failed") &&
+                          (run.laminar_trace_id ? (
                             <a
-                              href={getLaminarUrl(run.laminar_trace_id, step.videoTimestamp)}
+                              href={getLaminarUrl(
+                                run.laminar_trace_id,
+                                step.videoTimestamp
+                              )}
                               target="_blank"
                               rel="noopener noreferrer"
                               style={styles.watchReplayButton}
-                              title={`Jump to ${step.videoTimestamp.toFixed(1)}s in Laminar recording`}
+                              title={`Jump to ${step.videoTimestamp.toFixed(
+                                1
+                              )}s in Laminar recording`}
                             >
                               ▶ Watch Replay
                             </a>
                           ) : run.video_path ? (
                             <button
                               style={styles.watchReplayButton}
-                              onClick={() => seekToTimestamp(step.videoTimestamp!)}
-                              title={`Jump to ${step.videoTimestamp.toFixed(1)}s in video`}
+                              onClick={() =>
+                                seekToTimestamp(step.videoTimestamp!)
+                              }
+                              title={`Jump to ${step.videoTimestamp.toFixed(
+                                1
+                              )}s in video`}
                             >
                               ▶ Watch Replay
                             </button>
-                          ) : null
-                        )}
+                          ) : null)}
                       </div>
                     </div>
 
@@ -518,7 +593,9 @@ export default function RunDetailPage() {
                         <span
                           style={{
                             ...styles.severityBadge,
-                            background: `${getSeverityColor(finding.severity)}20`,
+                            background: `${getSeverityColor(
+                              finding.severity
+                            )}20`,
                             color: getSeverityColor(finding.severity),
                           }}
                         >
