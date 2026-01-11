@@ -36,15 +36,25 @@ export default function ProjectRunsPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [limit] = useState(5);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  
   const router = useRouter();
   const params = useParams();
   const projectId = params.projectId as string;
 
   useEffect(() => {
     fetchProjectAndRuns();
-    const interval = setInterval(fetchRuns, 5000);
+    const interval = setInterval(() => {
+        // Only auto-refresh first page or if explicitly desired
+        if (page === 1) fetchRuns();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [projectId]);
+  }, [projectId, page]);
 
   async function fetchProjectAndRuns() {
     const token = localStorage.getItem("token");
@@ -94,13 +104,16 @@ export default function ProjectRunsPage() {
 
     try {
       const res = await fetch(
-        `${API_URL}/api/projects/${targetId}/runs`,
+        `${API_URL}/api/projects/${targetId}/runs?page=${page}&limit=${limit}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
       if (res.ok) {
-        setRuns(await res.json());
+        const data = await res.json();
+        setRuns(data.runs);
+        setTotalCount(data.total_count);
+        setTotalPages(data.total_pages);
       }
     } catch (e) {
       console.error("Failed to fetch runs:", e);
@@ -121,8 +134,8 @@ export default function ProjectRunsPage() {
   }
 
   const stats = [
-    { label: "Success Rate", value: runs.length > 0 ? "94%" : "—", detail: "↑ 2% this week", icon: Activity, color: "text-green-400" },
-    { label: "Avg. Duration", value: runs.length > 0 ? "1m 42s" : "—", detail: "Last 50 runs", icon: Clock, color: "text-blue-400" },
+    { label: "Success Rate", value: totalCount > 0 ? "94%" : "—", detail: "↑ 2% this week", icon: Activity, color: "text-green-400" },
+    { label: "Avg. Duration", value: totalCount > 0 ? "1m 42s" : "—", detail: "Last 50 runs", icon: Clock, color: "text-blue-400" },
     { label: "Total Findings", value: runs.reduce((acc, r) => acc + r.finding_count, 0).toString(), detail: "Security issues", icon: ShieldAlert, color: "text-red-400" },
     { label: "SDK Usage", value: "Ready", detail: "v0.4.2 stable", icon: Zap, color: "text-accent" },
   ];
@@ -137,11 +150,11 @@ export default function ProjectRunsPage() {
             <span className="text-white opacity-80">{project?.name || (projectId === 'default' ? 'Default Project' : projectId)}</span>
           </div>
           <h1 className="text-4xl font-semibold text-white font-display">
-            {runs.length === 0 ? "Get Started" : "Agent Runs"}
+            {totalCount === 0 && !loading ? "Get Started" : "Agent Runs"}
           </h1>
         </div>
         
-        {runs.length > 0 && (
+        {totalCount > 0 && (
             <div className="flex gap-3">
             <button className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-serif hover:bg-white/10 transition-all">
                 <Filter size={16} />
@@ -174,21 +187,21 @@ export default function ProjectRunsPage() {
       <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm shadow-2xl">
         <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
           <h2 className="text-sm font-semibold font-serif text-textSecondary uppercase tracking-widest">
-            {runs.length === 0 ? "Project Setup" : "Recent Activity"}
+            {totalCount === 0 && !loading ? "Project Setup" : "History"}
           </h2>
-          {runs.length > 0 && (
-             <span className="text-xs text-textSecondary font-serif bg-white/10 px-2 py-1 rounded-full">{runs.length} Runs total</span>
+          {totalCount > 0 && (
+             <span className="text-xs text-textSecondary font-serif bg-white/10 px-2 py-1 rounded-full">{totalCount} Runs total</span>
           )}
         </div>
         
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[400px]">
           {loading ? (
             <div className="py-20 min-h-[400px] flex flex-col justify-center text-center text-textSecondary font-serif animate-pulse text-sm">
               <div className="w-8 h-8 border-2 border-white/5 border-t-accent rounded-full animate-spin mx-auto mb-4" />
               Syncing with backend...
             </div>
-          ) : runs.length === 0 ? (
-            <div className="py-24 min-h-[400px] flex flex-col justify-center text-center px-6">
+          ) : totalCount === 0 ? (
+            <div className="py-24 min-h-[500px] flex flex-col justify-center text-center px-6">
               <div className="w-20 h-20 bg-accent/5 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-accent/10">
                  <Activity size={32} className="text-accent opacity-50 animate-pulse" />
               </div>
@@ -215,6 +228,7 @@ export default function ProjectRunsPage() {
               </div>
             </div>
           ) : (
+            <>
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-white/5 text-[11px] text-textSecondary font-serif uppercase tracking-widest bg-white/[0.01]">
@@ -230,7 +244,7 @@ export default function ProjectRunsPage() {
                 {runs.map((run) => (
                   <tr 
                     key={run.id}
-                    onClick={() => router.push(`/runs/${run.id}`)}
+                    onClick={() => router.push(`/projects/${projectId}/runs/${run.id}`)}
                     className="border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer group"
                   >
                     <td className="px-6 py-5">
@@ -269,6 +283,45 @@ export default function ProjectRunsPage() {
                 ))}
               </tbody>
             </table>
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between bg-white/[0.01]">
+                    <p className="text-xs text-textSecondary font-serif">
+                        Showing <span className="text-white">{(page - 1) * limit + 1}</span> to <span className="text-white">{Math.min(page * limit, totalCount)}</span> of <span className="text-white">{totalCount}</span> runs
+                    </p>
+                    <div className="flex gap-2">
+                        <button 
+                            disabled={page === 1}
+                            onClick={() => setPage(page - 1)}
+                            className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-serif text-textSecondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 transition-all"
+                        >
+                            Previous
+                        </button>
+                        <div className="flex items-center gap-1.5 px-2">
+                            {Array.from({ length: totalPages }).map((_, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => setPage(i + 1)}
+                                    className={`w-7 h-7 rounded-lg text-[10px] font-medium flex items-center justify-center transition-all ${
+                                        page === i + 1 ? 'bg-accent text-background shadow-lg shadow-accent/20' : 'text-textSecondary hover:bg-white/5'
+                                    }`}
+                                >
+                                    {i + 1}
+                                </button>
+                            ))}
+                        </div>
+                        <button 
+                            disabled={page === totalPages}
+                            onClick={() => setPage(page + 1)}
+                            className="px-4 py-1.5 bg-white text-background rounded-lg text-xs font-medium font-serif hover:opacity-90 disabled:opacity-30 transition-all"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
+            </>
           )}
         </div>
       </div>

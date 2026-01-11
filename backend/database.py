@@ -9,6 +9,7 @@ DB_PATH = Path(__file__).parent / "sentric.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA foreign_keys = ON")
         await db.executescript(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -24,7 +25,7 @@ async def init_db():
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
             
             CREATE TABLE IF NOT EXISTS api_keys (
@@ -34,13 +35,14 @@ async def init_db():
                 project_id TEXT NOT NULL,
                 name TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (project_id) REFERENCES projects(id)
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
             
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
+                user_id TEXT,
                 task TEXT,
                 status TEXT DEFAULT 'running',
                 start_time TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -48,7 +50,8 @@ async def init_db():
                 video_path TEXT,
                 video_start_time TEXT,
                 laminar_trace_id TEXT,
-                FOREIGN KEY (project_id) REFERENCES projects(id)
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
             );
             
             CREATE TABLE IF NOT EXISTS events (
@@ -58,7 +61,7 @@ async def init_db():
                 payload TEXT NOT NULL,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                 video_timestamp REAL,
-                FOREIGN KEY (run_id) REFERENCES runs(id)
+                FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
             );
             
             CREATE TABLE IF NOT EXISTS security_findings (
@@ -69,7 +72,7 @@ async def init_db():
                 description TEXT NOT NULL,
                 evidence TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (run_id) REFERENCES runs(id)
+                FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
             );
         """
         )
@@ -101,6 +104,18 @@ async def init_db():
                 await db.execute("ALTER TABLE runs ADD COLUMN video_start_time TEXT")
             if "laminar_trace_id" not in columns:
                 await db.execute("ALTER TABLE runs ADD COLUMN laminar_trace_id TEXT")
+            if "user_id" not in columns:
+                await db.execute("ALTER TABLE runs ADD COLUMN user_id TEXT")
+                await db.commit()
+
+            # Always try to backfill NULL user_ids from associated projects
+            await db.execute(
+                """
+                UPDATE runs 
+                SET user_id = (SELECT user_id FROM projects WHERE projects.id = runs.project_id)
+                WHERE user_id IS NULL
+                """
+            )
             await db.commit()
         except Exception:
             pass
@@ -117,7 +132,9 @@ async def init_db():
 
 
 async def get_db():
-    return await aiosqlite.connect(DB_PATH)
+    db = await aiosqlite.connect(DB_PATH)
+    await db.execute("PRAGMA foreign_keys = ON")
+    return db
 
 
 # Seed demo data

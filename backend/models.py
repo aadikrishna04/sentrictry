@@ -137,3 +137,13 @@ class HourlyStatsItem(BaseModel):
 
 class HourlyStatsResponse(BaseModel):
     data: list[HourlyStatsItem]
+class UpdateProjectRequest(BaseModel):
+    name: str
+
+
+class PaginatedRunsResponse(BaseModel):
+    runs: list[RunSummary]
+    total_count: int
+    page: int
+    limit: int
+    total_pages: int

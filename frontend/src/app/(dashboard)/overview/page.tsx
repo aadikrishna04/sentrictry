@@ -440,7 +440,7 @@ export default function OverviewPage() {
                     {recentRuns.map((run) => (
                       <tr
                         key={run.id}
-                        onClick={() => router.push(`/runs/${run.id}`)}
+                        onClick={() => router.push(`/projects/${run.project_id}/runs/${run.id}`)}
                         className="group cursor-pointer hover:bg-white/[0.02] transition-colors"
                       >
                         <td className="py-4 font-medium text-white opacity-80 group-hover:opacity-100">

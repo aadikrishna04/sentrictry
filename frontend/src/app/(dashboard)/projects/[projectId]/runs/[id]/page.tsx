@@ -50,6 +50,7 @@ export default function RunDetailPage() {
   const params = useParams();
   const router = useRouter();
   const runId = params.id as string;
+  const projectId = params.projectId as string;
 
   const [run, setRun] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
@@ -343,7 +344,7 @@ export default function RunDetailPage() {
     <div className="min-h-screen h-screen flex flex-col bg-background overflow-hidden">
       <header className="px-12 pt-6 pb-8 border-b border-white/10 bg-background/80 backdrop-blur-sm">
         <Link
-          href="/"
+          href={`/projects/${projectId}/runs`}
           className="text-sm text-textSecondary mb-4 inline-block hover:text-textPrimary transition-colors font-serif"
         >
           ← Back to Runs
@@ -650,7 +651,7 @@ export default function RunDetailPage() {
                       </p>
                       {finding.evidence.length > 0 && (
                         <details className="mt-4">
-                          <summary className="text-textSecondary text-sm cursor-pointer font-serif hover:text-textPrimary transition-colors">
+                           <summary className="text-textSecondary text-sm cursor-pointer font-serif hover:text-textPrimary transition-colors">
                             View Evidence
                           </summary>
                           <pre className="mt-3 p-4 bg-white/10 rounded-lg text-sm overflow-auto max-h-[200px] font-mono">

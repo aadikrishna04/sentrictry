@@ -65,6 +65,8 @@ from models import (
     DailyStatsResponse,
     HourlyStatsResponse,
     HourlyStatsItem,
+    UpdateProjectRequest,
+    PaginatedRunsResponse,
 )
 
 from security_analyzer import analyze_events
@@ -260,10 +262,11 @@ async def start_run(request: RunStartRequest, auth: dict = Depends(verify_api_ke
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO runs (id, project_id, task, status, start_time) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO runs (id, project_id, user_id, task, status, start_time) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 auth["project_id"],
+                auth["user_id"],
                 request.task,
                 "running",
                 datetime.utcnow().isoformat(),
@@ -782,11 +785,69 @@ async def create_project(
     )
 
 
+@app.patch("/api/projects/{project_id}", response_model=ProjectResponse)
+async def update_project(
+    project_id: str,
+    request: UpdateProjectRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update a project's name."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Verify ownership
+        cursor = await db.execute(
+            "SELECT created_at FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user["id"]),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        created_at = row[0]
+
+        await db.execute(
+            "UPDATE projects SET name = ? WHERE id = ?",
+            (request.name, project_id),
+        )
+        await db.commit()
+
+    return ProjectResponse(
+        id=project_id,
+        name=request.name,
+        created_at=created_at,
+    )
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Delete a project and all its associated data (cascaded by FKs)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Verify ownership
+        cursor = await db.execute(
+            "SELECT id FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user["id"]),
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # FKs are configured to cascade? Let's check database.py soon.
+        # If not, we might need manual cleanup of runs, events, etc.
+        # But standard way is ON DELETE CASCADE.
+        await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        await db.commit()
+
+    return {"status": "success", "message": "Project deleted"}
+
+
 # === Dashboard API ===
 
 
-@app.get("/api/projects/{project_id}/runs")
-async def list_runs(project_id: str, user: dict = Depends(get_current_user)):
+@app.get("/api/projects/{project_id}/runs", response_model=PaginatedRunsResponse)
+async def list_runs(
+    project_id: str,
+    page: int = 1,
+    limit: int = 10,
+    user: dict = Depends(get_current_user),
+):
     # Verify user owns project
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
@@ -797,19 +858,15 @@ async def list_runs(project_id: str, user: dict = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Project not found")
 
         db.row_factory = aiosqlite.Row
+
+        # Get total count
         cursor = await db.execute(
-            """
-            SELECT r.*, COUNT(sf.id) as finding_count
-            FROM runs r
-            LEFT JOIN security_findings sf ON r.id = sf.run_id
-            WHERE r.project_id = ?
-            GROUP BY r.id
-            ORDER BY r.start_time DESC
-        """,
-            (project_id,),
+            "SELECT COUNT(*) FROM runs WHERE project_id = ?", (project_id,)
         )
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+        total_count = (await cursor.fetchone())[0]
+
+        # Get paginated runs
+        offset = (page - 1) * limit
         cursor = await db.execute(
             """
             SELECT r.*, COUNT(sf.id) as finding_count
@@ -818,12 +875,13 @@ async def list_runs(project_id: str, user: dict = Depends(get_current_user)):
             WHERE r.project_id = ?
             GROUP BY r.id
             ORDER BY r.start_time DESC
+            LIMIT ? OFFSET ?
         """,
-            (project_id,),
+            (project_id, limit, offset),
         )
         rows = await cursor.fetchall()
 
-        return [
+        runs = [
             {
                 "id": row["id"],
                 "project_id": row["project_id"],
@@ -835,6 +893,16 @@ async def list_runs(project_id: str, user: dict = Depends(get_current_user)):
             }
             for row in rows
         ]
+
+        total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
+
+        return PaginatedRunsResponse(
+            runs=runs,
+            total_count=total_count,
+            page=page,
+            limit=limit,
+            total_pages=total_pages,
+        )
 
 
 @app.get("/api/runs/recent", response_model=list[RunWithProject])
@@ -848,12 +916,12 @@ async def get_recent_runs(limit: int = 5, user: dict = Depends(get_current_user)
             FROM runs r
             JOIN projects p ON r.project_id = p.id
             LEFT JOIN security_findings sf ON r.id = sf.run_id
-            WHERE p.user_id = ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?))
             GROUP BY r.id
             ORDER BY r.start_time DESC
             LIMIT ?
             """,
-            (user["id"], limit),
+            (user["id"], user["id"], limit),
         )
         rows = await cursor.fetchall()
         return [
@@ -881,9 +949,9 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
             """
             SELECT r.* FROM runs r
             JOIN projects p ON r.project_id = p.id
-            WHERE r.id = ? AND p.user_id = ?
+            WHERE r.id = ? AND (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?))
         """,
-            (run_id, user["id"]),
+            (run_id, user["id"], user["id"]),
         )
         run = await cursor.fetchone()
         if not run:
@@ -960,9 +1028,9 @@ async def get_run_video(run_id: str, user: dict = Depends(get_current_user)):
             """
             SELECT r.video_path FROM runs r
             JOIN projects p ON r.project_id = p.id
-            WHERE r.id = ? AND p.user_id = ?
+            WHERE r.id = ? AND (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?))
         """,
-            (run_id, user["id"]),
+            (run_id, user["id"], user["id"]),
         )
         run = await cursor.fetchone()
         if not run:
@@ -999,9 +1067,9 @@ async def get_stats_overview(user: dict = Depends(get_current_user)):
             """
             SELECT COUNT(*) as count FROM runs r
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?))
             """,
-            (user["id"],),
+            (user["id"], user["id"]),
         )
         total_runs = (await cursor.fetchone())["count"]
 
@@ -1011,9 +1079,9 @@ async def get_stats_overview(user: dict = Depends(get_current_user)):
             SELECT COUNT(*) as count FROM security_findings sf
             JOIN runs r ON sf.run_id = r.id
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?))
             """,
-            (user["id"],),
+            (user["id"], user["id"]),
         )
         total_findings = (await cursor.fetchone())["count"]
 
@@ -1030,9 +1098,9 @@ async def get_stats_overview(user: dict = Depends(get_current_user)):
             """
             SELECT COUNT(DISTINCT r.project_id) as count FROM runs r
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND r.start_time > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND r.start_time > ?
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         active_projects = (await cursor.fetchone())["count"]
 
@@ -1042,9 +1110,9 @@ async def get_stats_overview(user: dict = Depends(get_current_user)):
             SELECT COUNT(*) as count FROM events e
             JOIN runs r ON e.run_id = r.id
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND e.type = 'action'
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND e.type = 'action'
             """,
-            (user["id"],),
+            (user["id"], user["id"]),
         )
         total_actions = (await cursor.fetchone())["count"]
 
@@ -1075,11 +1143,11 @@ async def get_daily_stats(user: dict = Depends(get_current_user)):
             SELECT substr(r.start_time, 1, 10) as day, COUNT(*) as count
             FROM runs r
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND r.start_time > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND r.start_time > ?
             GROUP BY day
             ORDER BY day ASC
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         runs_data = {row["day"]: row["count"] for row in await cursor.fetchall()}
 
@@ -1090,11 +1158,11 @@ async def get_daily_stats(user: dict = Depends(get_current_user)):
             FROM security_findings sf
             JOIN runs r ON sf.run_id = r.id
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND sf.created_at > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND sf.created_at > ?
             GROUP BY day
             ORDER BY day ASC
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         findings_data = {row["day"]: row["count"] for row in await cursor.fetchall()}
 
@@ -1105,11 +1173,11 @@ async def get_daily_stats(user: dict = Depends(get_current_user)):
             FROM events e
             JOIN runs r ON e.run_id = r.id
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND e.type = 'action' AND e.timestamp > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND e.type = 'action' AND e.timestamp > ?
             GROUP BY day
             ORDER BY day ASC
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         actions_data = {row["day"]: row["count"] for row in await cursor.fetchall()}
 
@@ -1146,11 +1214,11 @@ async def get_hourly_stats(user: dict = Depends(get_current_user)):
             SELECT substr(r.start_time, 1, 13) as hour, COUNT(*) as count
             FROM runs r
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND r.start_time > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND r.start_time > ?
             GROUP BY hour
             ORDER BY hour ASC
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         runs_data = {row["hour"]: row["count"] for row in await cursor.fetchall()}
 
@@ -1161,11 +1229,11 @@ async def get_hourly_stats(user: dict = Depends(get_current_user)):
             FROM security_findings sf
             JOIN runs r ON sf.run_id = r.id
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND sf.created_at > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND sf.created_at > ?
             GROUP BY hour
             ORDER BY hour ASC
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         findings_data = {row["hour"]: row["count"] for row in await cursor.fetchall()}
 
@@ -1176,11 +1244,11 @@ async def get_hourly_stats(user: dict = Depends(get_current_user)):
             FROM events e
             JOIN runs r ON e.run_id = r.id
             JOIN projects p ON r.project_id = p.id
-            WHERE p.user_id = ? AND e.type = 'action' AND e.timestamp > ?
+            WHERE (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?)) AND e.type = 'action' AND e.timestamp > ?
             GROUP BY hour
             ORDER BY hour ASC
             """,
-            (user["id"], cutoff),
+            (user["id"], user["id"], cutoff),
         )
         actions_data = {row["hour"]: row["count"] for row in await cursor.fetchall()}
 
