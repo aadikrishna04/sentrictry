@@ -1,238 +1,219 @@
 """Security Analysis Engine for Sentric MVP.
 
 Analyzes agent actions and reasoning to detect potential security issues.
+Uses LLM-based contextual analysis for comprehensive security threat detection.
 """
 
 import json
 import re
-from typing import Optional
-from urllib.parse import urlparse
+import os
+from typing import List, Dict, Any
 
-SUSPICIOUS_DOMAINS = [
-    "malware.com",
-    "phishing.site",
-    "hack.ru",
-    "evil.net",
-    "download-free.xyz",
-    "login-secure.tk",
-]
-
-SENSITIVE_KEYWORDS = [
-    "password",
-    "credit card",
-    "ssn",
-    "social security",
-    "api key",
-    "secret",
-    "token",
-    "credentials",
-]
+# Try to import OpenAI for LLM-based analysis (required)
+try:
+    from openai import OpenAI
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
+    OpenAI = None
 
 
-def analyze_events(events: list[dict]) -> list[dict]:
-    """Analyze a sequence of events and return security findings."""
-    findings = []
-
+def analyze_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Analyze a sequence of events and return security findings.
+    
+    Uses LLM-based contextual analysis for comprehensive security threat detection.
+    
+    Args:
+        events: List of event dictionaries with 'type' and 'payload' keys
+    
+    Returns:
+        List of finding dictionaries with severity, category, description, evidence
+        Returns empty list if LLM is unavailable or analysis fails
+    """
+    if not events:
+        return []
+    
+    if not LLM_AVAILABLE:
+        print(f"[Security Analyzer] ⚠️  LLM not available - OpenAI package not installed")
+        return []
+    
     actions = [e for e in events if e.get("type") == "action"]
     reasonings = [e for e in events if e.get("type") == "reasoning"]
 
-    # Rule 1: Non-HTTPS form submissions
-    findings.extend(_check_non_https_submissions(actions))
-
-    # Rule 2: Suspicious domains
-    findings.extend(_check_suspicious_domains(actions))
-
-    # Rule 3: Uncertainty before actions
-    findings.extend(_check_uncertain_reasoning(reasonings, actions))
-
-    # Rule 4: Rapid repeated actions (possible loop)
-    findings.extend(_check_action_loops(actions))
-
-    # Rule 5: Sensitive data exposure
-    findings.extend(_check_sensitive_data(actions))
-
-    # Rule 6: Unknown domain data submission
-    findings.extend(_check_unknown_domain_submissions(actions))
-
-    return findings
+    # Run LLM-based analysis
+    try:
+        llm_findings = _analyze_with_llm(events, actions, reasonings)
+        if llm_findings:
+            print(f"[Security Analyzer] ✅ LLM analysis completed: {len(llm_findings)} findings")
+            return llm_findings
+        else:
+            print(f"[Security Analyzer] ✅ LLM analysis completed: No security issues detected")
+            return []
+    except Exception as e:
+        print(f"[Security Analyzer] ⚠️  LLM analysis failed: {e}")
+        return []
 
 
-def _check_non_https_submissions(actions: list[dict]) -> list[dict]:
-    """Check for form submissions on non-HTTPS pages."""
-    findings = []
+def _analyze_with_llm(
+    events: List[Dict[str, Any]],
+    actions: List[Dict[str, Any]],
+    reasonings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Use LLM to analyze events for security issues with contextual understanding.
+    
+    This provides comprehensive security analysis by understanding:
+    - Context and intent behind actions
+    - Subtle security risks in reasoning
+    - Novel attack patterns
+    - Social engineering attempts
+    - Complex multi-step attack chains
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return []  # No API key, skip LLM analysis
+    
+    client = OpenAI(api_key=api_key)
+    
+    # Prepare context for LLM analysis
+    # Limit to recent events to stay within token limits (last 50 events or ~10k tokens)
+    recent_events = events[-50:] if len(events) > 50 else events
+    
+    # Format events for LLM
+    events_summary = _format_events_for_llm(recent_events)
+    
+    # Create security-focused prompt
+    prompt = f"""You are a cybersecurity expert analyzing AI browser agent behavior for security threats.
 
-    for action in actions:
-        payload = action.get("payload", {})
-        url = payload.get("url", "")
-        kind = payload.get("kind", "")
+Analyze the following agent actions and reasoning to identify potential security issues:
 
-        if kind in ["click", "type", "submit"] and url.startswith("http://"):
-            findings.append(
+{events_summary}
+
+Focus on detecting:
+1. **Authentication & Authorization Risks**: Attempts to bypass auth, privilege escalation, session hijacking
+2. **Data Exposure**: Sensitive data handling, PII leaks, credential exposure
+3. **Network Security**: Suspicious network requests, data exfiltration, CORS issues
+4. **Social Engineering**: Phishing patterns, deceptive interfaces, trust manipulation
+5. **Injection Attacks**: XSS attempts, SQL injection patterns, command injection
+6. **Business Logic Flaws**: Payment manipulation, race conditions, workflow bypasses
+7. **Context-Specific Risks**: Domain-specific threats based on the agent's task
+
+Each finding should have:
+- severity: "critical", "high", "medium", or "low"
+- category: A short category name (e.g., "authentication_bypass", "data_exposure")
+- description: A clear explanation of the security concern
+- evidence_indices: Array of event indices (0-based) that support this finding
+
+Be specific and evidence-based. Only flag genuine security concerns, not normal agent behavior.
+If no security issues are found, return an empty array.
+
+Return your findings as a JSON object with a 'findings' key containing an array of findings."""
+
+    try:
+        # Use JSON mode for structured output (requires response to be a JSON object)
+        model = os.getenv("SECURITY_ANALYZER_LLM_MODEL", "gpt-4o-mini")
+        use_json_mode = "gpt-4" in model or "o1" not in model
+        
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
                 {
-                    "severity": "high",
-                    "category": "insecure_transport",
-                    "description": f"Action performed on non-HTTPS page: {url}",
-                    "evidence": [action],
-                }
-            )
-
-    return findings
-
-
-def _check_suspicious_domains(actions: list[dict]) -> list[dict]:
-    """Check for navigation to known suspicious domains."""
-    findings = []
-
-    for action in actions:
-        payload = action.get("payload", {})
-        url = payload.get("url", "")
-
-        if url:
-            try:
-                domain = urlparse(url).netloc.lower()
-                for suspicious in SUSPICIOUS_DOMAINS:
-                    if suspicious in domain:
-                        findings.append(
-                            {
-                                "severity": "critical",
-                                "category": "suspicious_navigation",
-                                "description": f"Navigation to suspicious domain: {domain}",
-                                "evidence": [action],
-                            }
-                        )
-            except:
-                pass
-
-    return findings
-
-
-def _check_uncertain_reasoning(
-    reasonings: list[dict], actions: list[dict]
-) -> list[dict]:
-    """Check for uncertain reasoning before important actions."""
-    findings = []
-
-    uncertainty_patterns = [
-        r"not sure",
-        r"uncertain",
-        r"might be",
-        r"could be wrong",
-        r"risky",
-        r"dangerous",
-        r"shouldn't",
-        r"probably shouldn't",
-    ]
-
-    for reasoning in reasonings:
-        payload = reasoning.get("payload", {})
-        content = payload.get("content", "").lower()
-
-        for pattern in uncertainty_patterns:
-            if re.search(pattern, content):
-                findings.append(
-                    {
-                        "severity": "medium",
-                        "category": "uncertain_action",
-                        "description": f"Agent expressed uncertainty: '{content[:100]}...'",
-                        "evidence": [reasoning],
-                    }
-                )
-                break
-
-    return findings
+                    "role": "system",
+                    "content": "You are a cybersecurity expert. Always respond with valid JSON only, no additional text."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,  # Low temperature for consistent security analysis
+            max_tokens=2000,
+            response_format={"type": "json_object"} if use_json_mode else None,
+        )
+        
+        content = response.choices[0].message.content.strip()
+        
+        # Parse JSON response
+        # Handle both array and object with "findings" key
+        try:
+            result = json.loads(content)
+            if isinstance(result, dict) and "findings" in result:
+                llm_findings = result["findings"]
+            elif isinstance(result, list):
+                llm_findings = result
+            else:
+                llm_findings = []
+        except json.JSONDecodeError:
+            # Try to extract JSON from markdown code blocks if present
+            json_match = re.search(r'```(?:json)?\s*({.*?}|\[.*?\])\s*```', content, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(1))
+                if isinstance(parsed, dict) and "findings" in parsed:
+                    llm_findings = parsed["findings"]
+                elif isinstance(parsed, list):
+                    llm_findings = parsed
+                else:
+                    llm_findings = []
+            else:
+                print(f"[Security Analyzer] Warning: Failed to parse LLM response as JSON: {content[:200]}")
+                return []
+        
+        # Convert LLM findings to our format and map evidence indices to actual events
+        formatted_findings = []
+        for finding in llm_findings:
+            if not isinstance(finding, dict):
+                continue
+            
+            # Map evidence indices to actual events
+            evidence_indices = finding.get("evidence_indices", [])
+            evidence_events = [recent_events[i] for i in evidence_indices if 0 <= i < len(recent_events)]
+            
+            formatted_findings.append({
+                "severity": finding.get("severity", "medium"),
+                "category": finding.get("category", "llm_detected_issue"),
+                "description": finding.get("description", "Security concern detected by LLM analysis"),
+                "evidence": evidence_events,
+                "source": "llm",  # Tag LLM-generated findings
+            })
+        
+        return formatted_findings
+        
+    except Exception as e:
+        print(f"[Security Analyzer] Error in LLM analysis: {e}")
+        return []
 
 
-def _check_action_loops(actions: list[dict]) -> list[dict]:
-    """Check for repeated identical actions (possible infinite loop)."""
-    findings = []
-
-    if len(actions) < 5:
-        return findings
-
-    # Check for 5+ identical consecutive actions
-    for i in range(len(actions) - 4):
-        window = actions[i : i + 5]
-        kinds = [a.get("payload", {}).get("kind") for a in window]
-        selectors = [a.get("payload", {}).get("selector") for a in window]
-
-        if len(set(kinds)) == 1 and len(set(selectors)) == 1 and kinds[0] is not None:
-            findings.append(
-                {
-                    "severity": "medium",
-                    "category": "action_loop",
-                    "description": f"Detected repeated action loop: {kinds[0]} on {selectors[0]}",
-                    "evidence": window,
-                }
-            )
-            break
-
-    return findings
-
-
-def _check_sensitive_data(actions: list[dict]) -> list[dict]:
-    """Check for potential sensitive data handling."""
-    findings = []
-
-    for action in actions:
-        payload = action.get("payload", {})
-        value = str(payload.get("value", "")).lower()
-
-        for keyword in SENSITIVE_KEYWORDS:
-            if keyword in value:
-                findings.append(
-                    {
-                        "severity": "high",
-                        "category": "sensitive_data",
-                        "description": f"Potential sensitive data detected in action value",
-                        "evidence": [{"action": action, "matched_keyword": keyword}],
-                    }
-                )
-                break
-
-    return findings
-
-
-def _check_unknown_domain_submissions(actions: list[dict]) -> list[dict]:
-    """Check for form submissions to unknown/uncommon domains."""
-    findings = []
-
-    trusted_tlds = [".gov", ".edu", ".org"]
-    common_domains = [
-        "google.com",
-        "amazon.com",
-        "microsoft.com",
-        "github.com",
-        "stripe.com",
-    ]
-
-    for action in actions:
-        payload = action.get("payload", {})
-        kind = payload.get("kind", "")
-        url = payload.get("url", "")
-
-        if kind in ["submit", "click"] and url:
-            try:
-                domain = urlparse(url).netloc.lower()
-                is_trusted = any(domain.endswith(tld) for tld in trusted_tlds)
-                is_common = any(common in domain for common in common_domains)
-
-                if not is_trusted and not is_common and domain:
-                    # Only flag if it looks like a form submission
-                    selector = payload.get("selector", "")
-                    if (
-                        "submit" in selector.lower()
-                        or "form" in selector.lower()
-                        or kind == "submit"
-                    ):
-                        findings.append(
-                            {
-                                "severity": "low",
-                                "category": "unknown_domain_submission",
-                                "description": f"Form submission to uncommon domain: {domain}",
-                                "evidence": [action],
-                            }
-                        )
-            except:
-                pass
-
-    return findings
+def _format_events_for_llm(events: List[Dict[str, Any]]) -> str:
+    """Format events into a readable string for LLM analysis."""
+    formatted = []
+    
+    for i, event in enumerate(events):
+        event_type = event.get("type", "unknown")
+        payload = event.get("payload", {})
+        timestamp = event.get("timestamp", "")
+        
+        event_str = f"\n[{i}] {event_type.upper()}"
+        if timestamp:
+            event_str += f" at {timestamp}"
+        
+        if event_type == "action":
+            kind = payload.get("kind", "")
+            url = payload.get("url", "")
+            selector = payload.get("selector", "")
+            value = payload.get("value", "")
+            
+            event_str += f"\n  Action: {kind}"
+            if url:
+                event_str += f"\n  URL: {url}"
+            if selector:
+                event_str += f"\n  Element: {selector}"
+            if value:
+                # Truncate long values
+                value_display = value[:100] + "..." if len(value) > 100 else value
+                event_str += f"\n  Value: {value_display}"
+        
+        elif event_type == "reasoning":
+            content = payload.get("content", "")
+            # Truncate very long reasoning
+            content_display = content[:500] + "..." if len(content) > 500 else content
+            event_str += f"\n  Reasoning: {content_display}"
+        
+        formatted.append(event_str)
+    
+    return "\n".join(formatted)
