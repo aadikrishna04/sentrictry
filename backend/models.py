@@ -147,3 +147,6 @@ class PaginatedRunsResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+    success_rate: float
+    avg_duration: float
+    total_findings: int

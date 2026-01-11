@@ -849,6 +849,35 @@ async def list_runs(
             for row in rows
         ]
 
+        # Get additional stats for the project
+        # Success Rate
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM runs WHERE project_id = ? AND status = 'completed'", (project_id,)
+        )
+        completed_count = (await cursor.fetchone())[0]
+        success_rate = (completed_count / total_count * 100) if total_count > 0 else 0
+
+        # Avg Duration (only for runs that have ended)
+        cursor = await db.execute(
+            """
+            SELECT AVG(strftime('%s', end_time) - strftime('%s', start_time)) 
+            FROM runs 
+            WHERE project_id = ? AND end_time IS NOT NULL
+            """, (project_id,)
+        )
+        avg_duration = (await cursor.fetchone())[0] or 0
+
+        # Total Findings across all runs
+        cursor = await db.execute(
+            """
+            SELECT COUNT(sf.id)
+            FROM security_findings sf
+            JOIN runs r ON sf.run_id = r.id
+            WHERE r.project_id = ?
+            """, (project_id,)
+        )
+        total_findings = (await cursor.fetchone())[0]
+
         total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
 
         return PaginatedRunsResponse(
@@ -857,6 +886,9 @@ async def list_runs(
             page=page,
             limit=limit,
             total_pages=total_pages,
+            success_rate=success_rate,
+            avg_duration=avg_duration,
+            total_findings=total_findings
         )
 
 

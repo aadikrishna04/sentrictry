@@ -42,6 +42,11 @@ export default function ProjectRunsPage() {
   const [limit] = useState(5);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+
+  // Project stats state
+  const [successRate, setSuccessRate] = useState(0);
+  const [avgDuration, setAvgDuration] = useState(0);
+  const [totalFindings, setTotalFindings] = useState(0);
   
   const router = useRouter();
   const params = useParams();
@@ -114,6 +119,9 @@ export default function ProjectRunsPage() {
         setRuns(data.runs);
         setTotalCount(data.total_count);
         setTotalPages(data.total_pages);
+        setSuccessRate(data.success_rate);
+        setAvgDuration(data.avg_duration);
+        setTotalFindings(data.total_findings);
       }
     } catch (e) {
       console.error("Failed to fetch runs:", e);
@@ -134,10 +142,16 @@ export default function ProjectRunsPage() {
   }
 
   const stats = [
-    { label: "Success Rate", value: totalCount > 0 ? "94%" : "—", detail: "↑ 2% this week", icon: Activity, color: "text-green-400" },
-    { label: "Avg. Duration", value: totalCount > 0 ? "1m 42s" : "—", detail: "Last 50 runs", icon: Clock, color: "text-blue-400" },
-    { label: "Total Findings", value: runs.reduce((acc, r) => acc + r.finding_count, 0).toString(), detail: "Security issues", icon: ShieldAlert, color: "text-red-400" },
-    { label: "SDK Usage", value: "Ready", detail: "v0.4.2 stable", icon: Zap, color: "text-accent" },
+    { label: "Success Rate", value: totalCount > 0 ? `${Math.round(successRate)}%` : "—", icon: Activity, color: "text-green-400" },
+    { 
+      label: "Avg. Duration", 
+      value: totalCount > 0 ? (
+        avgDuration < 60 ? `${Math.round(avgDuration)}s` : `${Math.floor(avgDuration / 60)}m ${Math.round(avgDuration % 60)}s`
+      ) : "—", 
+      icon: Clock, 
+      color: "text-blue-400" 
+    },
+    { label: "Total Findings", value: totalFindings.toString(), icon: ShieldAlert, color: "text-red-400" },
   ];
 
   return (
@@ -169,7 +183,7 @@ export default function ProjectRunsPage() {
       </div>
 
       {/* Analytics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
         {stats.map((stat) => (
           <div key={stat.label} className="bg-white/5 border border-white/10 p-6 rounded-2xl hover:bg-white/[0.07] transition-all group">
             <div className="flex items-center justify-between mb-4">
@@ -179,7 +193,6 @@ export default function ProjectRunsPage() {
             </div>
             <p className="text-textSecondary text-xs font-serif uppercase tracking-wider mb-1">{stat.label}</p>
             <p className="text-2xl font-semibold text-white font-display mb-1">{stat.value}</p>
-            <p className="text-[11px] text-textSecondary font-serif opacity-60 italic">{stat.detail}</p>
           </div>
         ))}
       </div>
