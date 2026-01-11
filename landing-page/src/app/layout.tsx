@@ -1,19 +1,24 @@
 import React from "react";
 import type { Metadata, Viewport } from "next";
-import { Crimson_Pro, Playfair_Display } from "next/font/google";
+import { Manrope, Playfair_Display, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const crimsonPro = Crimson_Pro({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-crimson-pro",
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
-  style: ["normal", "italic"],
+  variable: "--font-manrope",
+  display: "swap",
 });
 
-const playfairDisplay = Playfair_Display({
+const playfair = Playfair_Display({
   subsets: ["latin"],
   variable: "--font-playfair-display",
-  weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -37,7 +42,7 @@ export default function RootLayout({
     <html
       lang="en"
       style={{ fontSize: "14px" }}
-      className={`${crimsonPro.variable} ${playfairDisplay.variable}`}
+      className={`${manrope.variable} ${playfair.variable} ${jetbrainsMono.variable}`}
     >
       <body style={{ fontSize: "14px", margin: 0, padding: 0 }}>
         {children}

@@ -59,12 +59,13 @@ export const GL = ({ hovering }: { hovering: boolean }) => {
           aperture={aperture}
           focus={focus}
           size={size}
+          planeScale={15} // Forced scale to cover hero
           noiseScale={noiseScale}
           noiseIntensity={noiseIntensity}
           timeScale={timeScale}
           pointSize={pointSize}
           opacity={opacity}
-          planeScale={planeScale}
+
           useManualTime={useManualTime}
           manualTime={manualTime}
           introspect={hovering}
