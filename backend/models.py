@@ -50,6 +50,10 @@ class RunSummary(BaseModel):
     finding_count: int
 
 
+class RunWithProject(RunSummary):
+    project_name: str
+
+
 class RunDetail(BaseModel):
     id: str
     project_id: str
@@ -93,3 +97,43 @@ class ApiKeyResponse(BaseModel):
 
 class ApiKeyListResponse(BaseModel):
     keys: list[dict]
+
+
+class CreateProjectRequest(BaseModel):
+    name: str
+
+
+class ProjectResponse(BaseModel):
+    id: str
+    name: str
+    created_at: str
+
+
+class StatsOverviewResponse(BaseModel):
+    total_runs: int
+    total_findings: int
+    total_projects: int
+    active_projects: int
+    total_actions: int
+
+
+class DailyStatsItem(BaseModel):
+    day: str
+    runs: int
+    findings: int
+    actions: int
+
+
+class DailyStatsResponse(BaseModel):
+    data: list[DailyStatsItem]
+
+
+class HourlyStatsItem(BaseModel):
+    hour: str
+    runs: int
+    findings: int
+    actions: int
+
+
+class HourlyStatsResponse(BaseModel):
+    data: list[HourlyStatsItem]

@@ -52,13 +52,21 @@ from models import (
     Event,
     RunSummary,
     RunDetail,
+    RunWithProject,
     SignupRequest,
     SigninRequest,
     AuthResponse,
     CreateApiKeyRequest,
     ApiKeyResponse,
     ApiKeyListResponse,
+    CreateProjectRequest,
+    ProjectResponse,
+    StatsOverviewResponse,
+    DailyStatsResponse,
+    HourlyStatsResponse,
+    HourlyStatsItem,
 )
+
 from security_analyzer import analyze_events
 
 # JWT settings
@@ -277,13 +285,13 @@ async def end_run(
 ):
     # Support both JSON (backward compatibility) and Form data (for video upload)
     content_type = req.headers.get("content-type", "")
-    
+
     run_status = None
     video_start_time = None
     laminar_trace_id = None
     video = None
     video_path = None
-    
+
     if "multipart/form-data" in content_type:
         # Form data with potential video upload
         form = await req.form()
@@ -311,7 +319,7 @@ async def end_run(
             laminar_trace_id = data.get("laminar_trace_id")
         except:
             pass
-    
+
     if not run_status:
         raise HTTPException(status_code=400, detail="Status is required")
     async with aiosqlite.connect(DB_PATH) as db:
@@ -326,23 +334,23 @@ async def end_run(
         # Update run status and video info
         update_query = "UPDATE runs SET status = ?, end_time = ?"
         update_params = [run_status, datetime.utcnow().isoformat()]
-        
+
         if video_path:
             update_query += ", video_path = ?"
             update_params.append(video_path)
-        
+
         if video_start_time:
             update_query += ", video_start_time = ?"
             update_params.append(video_start_time)
-        
+
         if laminar_trace_id:
             update_query += ", laminar_trace_id = ?"
             update_params.append(laminar_trace_id)
             print(f"[Sentric] Laminar trace ID stored: {laminar_trace_id}")
-        
+
         update_query += " WHERE id = ?"
         update_params.append(run_id)
-        
+
         await db.execute(update_query, tuple(update_params))
 
         # Fetch all events for analysis
@@ -391,7 +399,7 @@ async def post_event(run_id: str, event: Event, auth: dict = Depends(verify_api_
             )
 
     timestamp = event.timestamp or datetime.utcnow().isoformat()
-    
+
     # Extract video_timestamp from event if present
     video_timestamp = getattr(event, "video_timestamp", None)
     if hasattr(event, "__dict__") and "video_timestamp" in event.__dict__:
@@ -401,7 +409,13 @@ async def post_event(run_id: str, event: Event, auth: dict = Depends(verify_api_
         if video_timestamp is not None:
             await db.execute(
                 "INSERT INTO events (run_id, type, payload, timestamp, video_timestamp) VALUES (?, ?, ?, ?, ?)",
-                (run_id, event.type, json.dumps(event.payload), timestamp, video_timestamp),
+                (
+                    run_id,
+                    event.type,
+                    json.dumps(event.payload),
+                    timestamp,
+                    video_timestamp,
+                ),
             )
         else:
             await db.execute(
@@ -412,7 +426,11 @@ async def post_event(run_id: str, event: Event, auth: dict = Depends(verify_api_
 
     # Broadcast to WebSocket subscribers
     if run_id in active_connections:
-        message_data = {"type": event.type, "payload": event.payload, "timestamp": timestamp}
+        message_data = {
+            "type": event.type,
+            "payload": event.payload,
+            "timestamp": timestamp,
+        }
         if video_timestamp is not None:
             message_data["video_timestamp"] = video_timestamp
         message = json.dumps(message_data)
@@ -518,12 +536,23 @@ async def websocket_endpoint(websocket: WebSocket, run_id: str):
                 if video_timestamp is not None:
                     await db.execute(
                         "INSERT INTO events (run_id, type, payload, timestamp, video_timestamp) VALUES (?, ?, ?, ?, ?)",
-                        (run_id, event["type"], json.dumps(event["payload"]), timestamp, video_timestamp),
+                        (
+                            run_id,
+                            event["type"],
+                            json.dumps(event["payload"]),
+                            timestamp,
+                            video_timestamp,
+                        ),
                     )
                 else:
                     await db.execute(
                         "INSERT INTO events (run_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
-                        (run_id, event["type"], json.dumps(event["payload"]), timestamp),
+                        (
+                            run_id,
+                            event["type"],
+                            json.dumps(event["payload"]),
+                            timestamp,
+                        ),
                     )
                 await db.commit()
 
@@ -731,6 +760,28 @@ async def list_projects(user: dict = Depends(get_current_user)):
     return {"projects": projects}
 
 
+@app.post("/api/projects", response_model=ProjectResponse)
+async def create_project(
+    request: CreateProjectRequest, user: dict = Depends(get_current_user)
+):
+    """Create a new project for the authenticated user."""
+    project_id = f"proj_{uuid.uuid4().hex[:12]}"
+    created_at = datetime.utcnow().isoformat()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO projects (id, user_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (project_id, user["id"], request.name, created_at),
+        )
+        await db.commit()
+
+    return ProjectResponse(
+        id=project_id,
+        name=request.name,
+        created_at=created_at,
+    )
+
+
 # === Dashboard API ===
 
 
@@ -786,6 +837,40 @@ async def list_runs(project_id: str, user: dict = Depends(get_current_user)):
         ]
 
 
+@app.get("/api/runs/recent", response_model=list[RunWithProject])
+async def get_recent_runs(limit: int = 5, user: dict = Depends(get_current_user)):
+    """Get the most recent runs across all projects for the current user."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT r.*, p.name as project_name, COUNT(sf.id) as finding_count
+            FROM runs r
+            JOIN projects p ON r.project_id = p.id
+            LEFT JOIN security_findings sf ON r.id = sf.run_id
+            WHERE p.user_id = ?
+            GROUP BY r.id
+            ORDER BY r.start_time DESC
+            LIMIT ?
+            """,
+            (user["id"], limit),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": row["id"],
+                "project_id": row["project_id"],
+                "task": row["task"],
+                "status": row["status"],
+                "start_time": row["start_time"],
+                "end_time": row["end_time"],
+                "finding_count": row["finding_count"],
+                "project_name": row["project_name"],
+            }
+            for row in rows
+        ]
+
+
 @app.get("/api/runs/{run_id}")
 async def get_run(run_id: str, user: dict = Depends(get_current_user)):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -803,7 +888,7 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
         run = await cursor.fetchone()
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
-        
+
         # Convert to dict for easier access
         run_dict = dict(run)
 
@@ -822,7 +907,7 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
             if r["video_timestamp"] is not None:
                 event_data["video_timestamp"] = r["video_timestamp"]
             events.append(event_data)
-        
+
         # Get video info from run
         video_path = run_dict.get("video_path")
         video_start_time = run_dict.get("video_start_time")
@@ -853,7 +938,7 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
             "events": events,
             "findings": findings,
         }
-        
+
         # Add video info if available
         if video_path:
             result["video_path"] = video_path
@@ -861,7 +946,7 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
             result["video_start_time"] = video_start_time
         if laminar_trace_id:
             result["laminar_trace_id"] = laminar_trace_id
-        
+
         return result
 
 
@@ -882,7 +967,7 @@ async def get_run_video(run_id: str, user: dict = Depends(get_current_user)):
         run = await cursor.fetchone()
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
-        
+
         video_path = run["video_path"]
         if not video_path or not os.path.exists(video_path):
             raise HTTPException(status_code=404, detail="Video not found")
@@ -901,6 +986,219 @@ async def get_run_video(run_id: str, user: dict = Depends(get_current_user)):
             media_type=media_type,
             filename=f"{run_id}{ext or ''}",
         )
+
+
+@app.get("/api/stats/overview", response_model=StatsOverviewResponse)
+async def get_stats_overview(user: dict = Depends(get_current_user)):
+    """Get high-level summary stats for the current user."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Total runs
+        cursor = await db.execute(
+            """
+            SELECT COUNT(*) as count FROM runs r
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ?
+            """,
+            (user["id"],),
+        )
+        total_runs = (await cursor.fetchone())["count"]
+
+        # Total findings
+        cursor = await db.execute(
+            """
+            SELECT COUNT(*) as count FROM security_findings sf
+            JOIN runs r ON sf.run_id = r.id
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ?
+            """,
+            (user["id"],),
+        )
+        total_findings = (await cursor.fetchone())["count"]
+
+        # Total projects
+        cursor = await db.execute(
+            "SELECT COUNT(*) as count FROM projects WHERE user_id = ?",
+            (user["id"],),
+        )
+        total_projects = (await cursor.fetchone())["count"]
+
+        # Active projects (at least one run in the last 7 days)
+        cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        cursor = await db.execute(
+            """
+            SELECT COUNT(DISTINCT r.project_id) as count FROM runs r
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND r.start_time > ?
+            """,
+            (user["id"], cutoff),
+        )
+        active_projects = (await cursor.fetchone())["count"]
+
+        # Total actions
+        cursor = await db.execute(
+            """
+            SELECT COUNT(*) as count FROM events e
+            JOIN runs r ON e.run_id = r.id
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND e.type = 'action'
+            """,
+            (user["id"],),
+        )
+        total_actions = (await cursor.fetchone())["count"]
+
+        return StatsOverviewResponse(
+            total_runs=total_runs,
+            total_findings=total_findings,
+            total_projects=total_projects,
+            active_projects=active_projects,
+            total_actions=total_actions,
+        )
+
+
+
+@app.get("/api/stats/daily", response_model=DailyStatsResponse)
+async def get_daily_stats(user: dict = Depends(get_current_user)):
+    """Get daily run and finding counts for the last 30 days."""
+    days = 30
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Runs per day
+        # In SQLite, we can use strftime or date() but since our timestamps are ISO strings,
+        # we can just take the first 10 characters (YYYY-MM-DD)
+        cursor = await db.execute(
+            """
+            SELECT substr(r.start_time, 1, 10) as day, COUNT(*) as count
+            FROM runs r
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND r.start_time > ?
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (user["id"], cutoff),
+        )
+        runs_data = {row["day"]: row["count"] for row in await cursor.fetchall()}
+
+        # Findings per day
+        cursor = await db.execute(
+            """
+            SELECT substr(sf.created_at, 1, 10) as day, COUNT(*) as count
+            FROM security_findings sf
+            JOIN runs r ON sf.run_id = r.id
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND sf.created_at > ?
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (user["id"], cutoff),
+        )
+        findings_data = {row["day"]: row["count"] for row in await cursor.fetchall()}
+
+        # Actions per day
+        cursor = await db.execute(
+            """
+            SELECT substr(e.timestamp, 1, 10) as day, COUNT(*) as count
+            FROM events e
+            JOIN runs r ON e.run_id = r.id
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND e.type = 'action' AND e.timestamp > ?
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (user["id"], cutoff),
+        )
+        actions_data = {row["day"]: row["count"] for row in await cursor.fetchall()}
+
+        result = []
+        for i in range(days + 1):
+            day_str = (datetime.utcnow() - timedelta(days=days - i)).strftime(
+                "%Y-%m-%d"
+            )
+            result.append(
+                {
+                    "day": day_str,
+                    "runs": runs_data.get(day_str, 0),
+                    "findings": findings_data.get(day_str, 0),
+                    "actions": actions_data.get(day_str, 0),
+                }
+            )
+
+        return DailyStatsResponse(data=result)
+
+
+@app.get("/api/stats/hourly", response_model=HourlyStatsResponse)
+async def get_hourly_stats(user: dict = Depends(get_current_user)):
+    """Get hourly run and finding counts for the last 24 hours."""
+    hours = 24
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Runs per hour - extract hour from ISO timestamp (format: YYYY-MM-DDTHH:MM:SS)
+        # We'll group by date and hour (YYYY-MM-DDTHH)
+        cursor = await db.execute(
+            """
+            SELECT substr(r.start_time, 1, 13) as hour, COUNT(*) as count
+            FROM runs r
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND r.start_time > ?
+            GROUP BY hour
+            ORDER BY hour ASC
+            """,
+            (user["id"], cutoff),
+        )
+        runs_data = {row["hour"]: row["count"] for row in await cursor.fetchall()}
+
+        # Findings per hour
+        cursor = await db.execute(
+            """
+            SELECT substr(sf.created_at, 1, 13) as hour, COUNT(*) as count
+            FROM security_findings sf
+            JOIN runs r ON sf.run_id = r.id
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND sf.created_at > ?
+            GROUP BY hour
+            ORDER BY hour ASC
+            """,
+            (user["id"], cutoff),
+        )
+        findings_data = {row["hour"]: row["count"] for row in await cursor.fetchall()}
+
+        # Actions per hour
+        cursor = await db.execute(
+            """
+            SELECT substr(e.timestamp, 1, 13) as hour, COUNT(*) as count
+            FROM events e
+            JOIN runs r ON e.run_id = r.id
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.user_id = ? AND e.type = 'action' AND e.timestamp > ?
+            GROUP BY hour
+            ORDER BY hour ASC
+            """,
+            (user["id"], cutoff),
+        )
+        actions_data = {row["hour"]: row["count"] for row in await cursor.fetchall()}
+
+        result = []
+        now = datetime.utcnow()
+        for i in range(hours + 1):
+            hour_time = now - timedelta(hours=hours - i)
+            hour_str = hour_time.strftime("%Y-%m-%dT%H")
+            result.append(
+                {
+                    "hour": hour_str,
+                    "runs": runs_data.get(hour_str, 0),
+                    "findings": findings_data.get(hour_str, 0),
+                    "actions": actions_data.get(hour_str, 0),
+                }
+            )
+
+        return HourlyStatsResponse(data=result)
 
 
 @app.get("/api/health")

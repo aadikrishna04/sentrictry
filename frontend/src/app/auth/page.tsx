@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -12,7 +12,35 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    // Check if user is already logged in
+    const token = localStorage.getItem("token");
+    if (token) {
+      // Validate token by checking user endpoint
+      fetch(`${API_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => {
+          if (res.ok) {
+            // User is authenticated, redirect to dashboard
+            router.push("/");
+          } else {
+            // Invalid token, remove it and continue to auth page
+            localStorage.removeItem("token");
+            setCheckingAuth(false);
+          }
+        })
+        .catch(() => {
+          // Error validating token, continue to auth page
+          setCheckingAuth(false);
+        });
+    } else {
+      setCheckingAuth(false);
+    }
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,26 +75,45 @@ export default function AuthPage() {
     }
   }
 
+  // Show loading state while checking authentication
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-5">
+        <div className="text-textSecondary font-serif">Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <div style={styles.logo}>
-          <div style={styles.logoIcon}>S</div>
-          <span style={styles.logoText}>Sentric</span>
+    <div className="min-h-screen flex items-center justify-center bg-background p-5">
+      <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-10 w-full max-w-[400px]">
+        <div className="flex items-center gap-3 mb-8 justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-accent via-accent to-accentHover rounded-[10px] flex items-center justify-center font-bold text-xl font-logo">
+            S
+          </div>
+          <span className="text-3xl font-medium tracking-tight text-textPrimary font-logo">
+            Sentric
+          </span>
         </div>
 
-        <h1 style={styles.title}>{isSignup ? "Create Account" : "Sign In"}</h1>
+        <h1 className="text-2xl font-semibold mb-6 text-center text-textPrimary font-serif">
+          {isSignup ? "Create Account" : "Sign In"}
+        </h1>
 
-        {error && <div style={styles.error}>{error}</div>}
+        {error && (
+          <div className="bg-red-500/15 text-red-400 p-3 rounded-lg mb-5 text-sm font-serif">
+            {error}
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {isSignup && (
             <input
               type="text"
               placeholder="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={styles.input}
+              className="px-4 py-3 bg-white/15 backdrop-blur-sm border border-white/30 rounded-lg text-textPrimary text-[15px] font-serif placeholder:text-white/40 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all"
               required
             />
           )}
@@ -75,7 +122,7 @@ export default function AuthPage() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={styles.input}
+            className="px-4 py-3 bg-white/15 backdrop-blur-sm border border-white/30 rounded-lg text-textPrimary text-[15px] font-serif placeholder:text-white/40 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all"
             required
           />
           <input
@@ -83,15 +130,19 @@ export default function AuthPage() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={styles.input}
+            className="px-4 py-3 bg-white/15 backdrop-blur-sm border border-white/30 rounded-lg text-textPrimary text-[15px] font-serif placeholder:text-white/40 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all"
             required
           />
-          <button type="submit" style={styles.button} disabled={loading}>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-3 bg-accent hover:bg-accentHover border-2 border-accent hover:border-accentHover text-background rounded-lg text-[15px] font-semibold cursor-pointer transition-all duration-300 ease-out transform hover:-translate-y-0.5 shadow-lg shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none font-serif uppercase tracking-wide"
+          >
             {loading ? "Loading..." : isSignup ? "Sign Up" : "Sign In"}
           </button>
         </form>
 
-        <div style={styles.switch}>
+        <div className="mt-6 text-center text-textSecondary text-sm font-serif">
           {isSignup ? "Already have an account? " : "Don't have an account? "}
           <button
             type="button"
@@ -99,7 +150,7 @@ export default function AuthPage() {
               setIsSignup(!isSignup);
               setError("");
             }}
-            style={styles.linkButton}
+            className="bg-none border-none text-accent cursor-pointer text-sm font-medium underline hover:text-accentHover transition-colors font-serif"
           >
             {isSignup ? "Sign In" : "Sign Up"}
           </button>
@@ -108,101 +159,3 @@ export default function AuthPage() {
     </div>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(180deg, #0a0a0f 0%, #0f0f18 100%)",
-    padding: "20px",
-  },
-  card: {
-    background: "var(--bg-secondary)",
-    borderRadius: "16px",
-    border: "1px solid var(--border)",
-    padding: "40px",
-    width: "100%",
-    maxWidth: "400px",
-  },
-  logo: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    marginBottom: "32px",
-    justifyContent: "center",
-  },
-  logoIcon: {
-    width: "40px",
-    height: "40px",
-    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-    borderRadius: "10px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 700,
-    fontSize: "20px",
-  },
-  logoText: {
-    fontSize: "28px",
-    fontWeight: 700,
-    letterSpacing: "-0.5px",
-  },
-  title: {
-    fontSize: "24px",
-    fontWeight: 600,
-    marginBottom: "24px",
-    textAlign: "center" as const,
-  },
-  error: {
-    background: "rgba(239, 68, 68, 0.15)",
-    color: "#f87171",
-    padding: "12px",
-    borderRadius: "8px",
-    marginBottom: "20px",
-    fontSize: "14px",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "16px",
-  },
-  input: {
-    padding: "12px 16px",
-    background: "var(--bg-tertiary)",
-    border: "1px solid var(--border)",
-    borderRadius: "8px",
-    color: "var(--text-primary)",
-    fontSize: "15px",
-    fontFamily: "inherit",
-  },
-  button: {
-    padding: "12px 24px",
-    background: "var(--accent)",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "15px",
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: "background 0.15s",
-    fontFamily: "inherit",
-  },
-  switch: {
-    marginTop: "24px",
-    textAlign: "center" as const,
-    color: "var(--text-secondary)",
-    fontSize: "14px",
-  },
-  linkButton: {
-    background: "none",
-    border: "none",
-    color: "var(--accent)",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: 500,
-    textDecoration: "underline",
-    fontFamily: "inherit",
-  },
-};

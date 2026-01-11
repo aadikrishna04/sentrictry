@@ -319,11 +319,19 @@ export default function RunDetailPage() {
   }
 
   if (loading) {
-    return <div style={styles.loading}>Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-textSecondary font-serif">
+        Loading...
+      </div>
+    );
   }
 
   if (!run) {
-    return <div style={styles.loading}>Run not found</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-textSecondary font-serif">
+        Run not found
+      </div>
+    );
   }
 
   const severityCounts = run.findings.reduce((acc, f) => {
@@ -332,70 +340,85 @@ export default function RunDetailPage() {
   }, {} as Record<string, number>);
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <Link href="/" style={styles.backLink}>
+    <div className="min-h-screen h-screen flex flex-col bg-background overflow-hidden">
+      <header className="px-12 pt-6 pb-8 border-b border-white/10 bg-background/80 backdrop-blur-sm">
+        <Link
+          href="/"
+          className="text-sm text-textSecondary mb-4 inline-block hover:text-textPrimary transition-colors font-serif"
+        >
           ← Back to Runs
         </Link>
-        <div style={styles.headerContent}>
+        <div className="flex justify-between items-start">
           <div>
-            <h1 style={styles.title}>
-              <code style={styles.runIdTitle}>{run.id}</code>
+            <h1 className="text-2xl font-semibold mb-2 font-serif">
+              <code className="text-accent font-mono">{run.id}</code>
             </h1>
-            {run.task && <p style={styles.task}>{run.task}</p>}
+            {run.task && (
+              <p className="text-[15px] text-textSecondary font-serif">
+                {run.task}
+              </p>
+            )}
           </div>
-          <span
-            style={{
-              ...styles.statusBadge,
-              ...(run.status === "running"
-                ? styles.statusRunning
-                : run.status === "completed"
-                ? styles.statusCompleted
-                : styles.statusFailed),
-            }}
-          >
-            {run.status === "running" && <span style={styles.pulse}></span>}
-            {run.status}
-          </span>
+          <div>
+            <span
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-sm font-medium font-serif ${
+                run.status === "running"
+                    ? "bg-accent/15 text-accent"
+                    : run.status === "completed"
+                    ? "bg-green-500/15 text-green-400"
+                    : "bg-red-500/15 text-red-400"
+                }`}
+            >
+                {run.status === "running" && (
+                <span className="w-2 h-2 bg-current rounded-full animate-pulse" />
+                )}
+                {run.status}
+            </span>
+          </div>
         </div>
       </header>
 
-      <div style={styles.tabs}>
+      <div className="flex gap-1 px-12 py-4 border-b border-white/10 bg-white/5">
         <button
-          style={{
-            ...styles.tab,
-            ...(activeTab === "timeline" ? styles.tabActive : {}),
-          }}
+          className={`px-5 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all font-serif ${
+            activeTab === "timeline"
+              ? "bg-white/10 text-textPrimary"
+              : "bg-transparent text-textSecondary hover:text-textPrimary"
+          }`}
           onClick={() => setActiveTab("timeline")}
         >
           Timeline ({run.events.length})
         </button>
         <button
-          style={{
-            ...styles.tab,
-            ...(activeTab === "security" ? styles.tabActive : {}),
-          }}
+          className={`px-5 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all font-serif ${
+            activeTab === "security"
+              ? "bg-white/10 text-textPrimary"
+              : "bg-transparent text-textSecondary hover:text-textPrimary"
+          }`}
           onClick={() => setActiveTab("security")}
         >
           Security Report ({run.findings.length})
         </button>
       </div>
 
-      <main style={styles.main}>
+      <main className="px-12 py-8 max-w-[1000px] mx-auto flex flex-col flex-1 min-h-0">
         {activeTab === "timeline" ? (
-          <div ref={timelineContainerRef} style={styles.timelineContainer}>
+          <div
+            ref={timelineContainerRef}
+            className="flex-1 overflow-y-auto overflow-x-hidden pr-2"
+          >
             {/* Laminar Recording Link - Show when Laminar trace is available */}
             {run &&
               (run.status === "completed" || run.status === "failed") &&
               run.laminar_trace_id && (
-                <div style={styles.laminarContainer}>
-                  <div style={styles.laminarHeader}>
-                    <span style={styles.laminarIcon}>🎥</span>
-                    <div style={styles.laminarContent}>
-                      <h3 style={styles.laminarTitle}>
+                <div className="mb-6 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-5">
+                  <div className="flex items-start gap-4">
+                    <span className="text-3xl">🎥</span>
+                    <div className="flex-1">
+                      <h3 className="m-0 mb-2 text-lg font-semibold text-textPrimary font-serif">
                         Full Browser Session Recording
                       </h3>
-                      <p style={styles.laminarDescription}>
+                      <p className="m-0 mb-4 text-sm text-textSecondary leading-relaxed font-serif">
                         View the complete real-time browser recording synced
                         with agent steps in Laminar
                       </p>
@@ -403,7 +426,7 @@ export default function RunDetailPage() {
                         href={getLaminarUrl(run.laminar_trace_id)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={styles.laminarButton}
+                        className="inline-block px-5 py-2.5 bg-accent hover:bg-accentHover text-background rounded-lg text-sm font-medium transition-all font-serif"
                       >
                         Open in Laminar →
                       </a>
@@ -416,34 +439,39 @@ export default function RunDetailPage() {
               (run.status === "completed" || run.status === "failed") &&
               run.video_path &&
               !run.laminar_trace_id && (
-                <div style={styles.videoContainer}>
+                <div className="mb-6 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 overflow-hidden">
                   <video
                     ref={videoRef}
                     controls
-                    style={styles.video}
+                    className="w-full max-h-[600px] rounded-lg"
                     src={`${API_URL}/api/runs/${runId}/video`}
                   >
                     Your browser does not support the video tag.
                   </video>
                 </div>
               )}
-            <div style={styles.timeline}>
+            <div className="flex flex-col gap-4">
               {run.events.length === 0 ? (
-                <div style={styles.empty}>
+                <div className="py-16 px-12 text-center text-textSecondary bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 font-serif">
                   <p>No events yet</p>
                   {run.status === "running" && (
-                    <p style={styles.emptyHint}>
+                    <p className="text-sm text-textSecondary mt-2 font-serif">
                       Waiting for agent activity...
                     </p>
                   )}
                 </div>
               ) : (
                 groupEventsByStep(run.events).map((step, stepIdx) => (
-                  <div key={stepIdx} style={styles.stepCard}>
-                    <div style={styles.stepHeader}>
-                      <h3 style={styles.stepTitle}>Step {step.stepNumber}</h3>
-                      <div style={styles.stepHeaderRight}>
-                        <span style={styles.stepTime}>
+                  <div
+                    key={stepIdx}
+                    className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-5 flex flex-col gap-4"
+                  >
+                    <div className="flex justify-between items-center mb-2 pb-3 border-b border-white/10">
+                      <h3 className="m-0 text-lg font-semibold text-textPrimary font-serif">
+                        Step {step.stepNumber}
+                      </h3>
+                      <div className="flex items-center gap-3">
+                        <span className="text-textSecondary text-sm font-mono">
                           {formatTime(step.timestamp)}
                         </span>
                         {step.videoTimestamp !== undefined &&
@@ -458,7 +486,7 @@ export default function RunDetailPage() {
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
-                              style={styles.watchReplayButton}
+                              className="px-3 py-1.5 bg-accent hover:bg-accentHover text-background rounded-md text-sm font-medium cursor-pointer transition-all font-serif"
                               title={`Jump to ${step.videoTimestamp.toFixed(
                                 1
                               )}s in Laminar recording`}
@@ -467,7 +495,7 @@ export default function RunDetailPage() {
                             </a>
                           ) : run.video_path ? (
                             <button
-                              style={styles.watchReplayButton}
+                              className="px-3 py-1.5 bg-accent hover:bg-accentHover text-background rounded-md text-sm font-medium cursor-pointer transition-all font-serif"
                               onClick={() =>
                                 seekToTimestamp(step.videoTimestamp!)
                               }
@@ -482,34 +510,36 @@ export default function RunDetailPage() {
                     </div>
 
                     {step.reasoning && (
-                      <div style={styles.reasoningSection}>
-                        <div style={styles.reasoningHeader}>💭 Reasoning</div>
+                      <div className="bg-purple-500/8 rounded-lg p-4 border border-purple-500/20">
+                        <div className="text-sm font-semibold text-purple-300 mb-3 font-serif">
+                          💭 Reasoning
+                        </div>
                         {step.reasoning.evaluation && (
-                          <div style={styles.reasoningItem}>
-                            <strong style={styles.reasoningLabel}>
+                          <div className="mb-3 flex flex-col gap-1">
+                            <strong className="text-sm text-purple-300 mb-1 font-serif">
                               👍 Eval:
                             </strong>
-                            <span style={styles.reasoningText}>
+                            <span className="text-base text-textPrimary leading-relaxed font-serif">
                               {step.reasoning.evaluation}
                             </span>
                           </div>
                         )}
                         {step.reasoning.memory && (
-                          <div style={styles.reasoningItem}>
-                            <strong style={styles.reasoningLabel}>
+                          <div className="mb-3 flex flex-col gap-1">
+                            <strong className="text-sm text-purple-300 mb-1 font-serif">
                               🧠 Memory:
                             </strong>
-                            <span style={styles.reasoningText}>
+                            <span className="text-base text-textPrimary leading-relaxed font-serif">
                               {step.reasoning.memory}
                             </span>
                           </div>
                         )}
                         {step.reasoning.next_goal && (
-                          <div style={styles.reasoningItem}>
-                            <strong style={styles.reasoningLabel}>
+                          <div className="mb-3 flex flex-col gap-1">
+                            <strong className="text-sm text-purple-300 mb-1 font-serif">
                               🎯 Next goal:
                             </strong>
-                            <span style={styles.reasoningText}>
+                            <span className="text-base text-textPrimary leading-relaxed font-serif">
                               {step.reasoning.next_goal}
                             </span>
                           </div>
@@ -518,17 +548,19 @@ export default function RunDetailPage() {
                     )}
 
                     {step.actions.length > 0 && (
-                      <div style={styles.actionsSection}>
-                        <div style={styles.actionsHeader}>⚡ Actions</div>
+                      <div className="bg-accent/8 rounded-lg p-4 border border-accent/20">
+                        <div className="text-sm font-semibold text-accent mb-3 font-serif">
+                          ⚡ Actions
+                        </div>
                         {step.actions.map((action, actionIdx) => (
-                          <div key={actionIdx} style={styles.actionItem}>
-                            <div style={styles.actionContent}>
-                              <span style={styles.actionKind}>
+                          <div key={actionIdx} className="mb-2">
+                            <div className="flex flex-wrap gap-3 items-center">
+                              <span className="bg-white/10 px-3 py-1.5 rounded-md font-semibold text-sm font-serif">
                                 {(action.payload as { kind?: string }).kind}
                               </span>
                               {(action.payload as { selector?: string })
                                 .selector && (
-                                <code style={styles.actionSelector}>
+                                <code className="text-accent text-sm font-mono break-all">
                                   {
                                     (action.payload as { selector?: string })
                                       .selector
@@ -536,12 +568,12 @@ export default function RunDetailPage() {
                                 </code>
                               )}
                               {(action.payload as { url?: string }).url && (
-                                <span style={styles.actionUrl}>
+                                <span className="text-textSecondary text-sm font-serif break-all">
                                   {(action.payload as { url?: string }).url}
                                 </span>
                               )}
                               {(action.payload as { value?: string }).value && (
-                                <span style={styles.actionValue}>
+                                <span className="text-textPrimary text-sm italic font-serif">
                                   {(action.payload as { value?: string }).value}
                                 </span>
                               )}
@@ -557,23 +589,28 @@ export default function RunDetailPage() {
             </div>
           </div>
         ) : (
-          <div style={styles.timelineContainer}>
-            <div style={styles.securityReport}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2">
+            <div>
               {/* Summary */}
-              <div style={styles.summaryCard}>
-                <h2 style={styles.summaryTitle}>Risk Summary</h2>
-                <div style={styles.severityGrid}>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6 mb-6">
+                <h2 className="text-base font-semibold mb-5 text-textSecondary font-serif">
+                  Risk Summary
+                </h2>
+                <div className="grid grid-cols-4 gap-4">
                   {["critical", "high", "medium", "low"].map((severity) => (
-                    <div key={severity} style={styles.severityItem}>
+                    <div
+                      key={severity}
+                      className="text-center p-4 bg-white/10 rounded-[10px]"
+                    >
                       <div
-                        style={{
-                          ...styles.severityCount,
-                          color: getSeverityColor(severity),
-                        }}
+                        className="text-3xl font-bold mb-1"
+                        style={{ color: getSeverityColor(severity) }}
                       >
                         {severityCounts[severity] || 0}
                       </div>
-                      <div style={styles.severityLabel}>{severity}</div>
+                      <div className="text-sm text-textSecondary uppercase tracking-wider font-serif">
+                        {severity}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -581,18 +618,21 @@ export default function RunDetailPage() {
 
               {/* Findings */}
               {run.findings.length === 0 ? (
-                <div style={styles.noFindings}>
-                  <div style={styles.noFindingsIcon}>✓</div>
+                <div className="py-16 px-12 text-center bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 text-green-400 font-serif">
+                  <div className="text-5xl mb-3">✓</div>
                   <p>No security issues detected</p>
                 </div>
               ) : (
-                <div style={styles.findingsList}>
+                <div className="flex flex-col gap-3">
                   {run.findings.map((finding, i) => (
-                    <div key={i} style={styles.findingCard}>
-                      <div style={styles.findingHeader}>
+                    <div
+                      key={i}
+                      className="bg-white/10 backdrop-blur-sm rounded-[10px] border border-white/20 p-5"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
                         <span
+                          className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider"
                           style={{
-                            ...styles.severityBadge,
                             background: `${getSeverityColor(
                               finding.severity
                             )}20`,
@@ -601,19 +641,19 @@ export default function RunDetailPage() {
                         >
                           {finding.severity.toUpperCase()}
                         </span>
-                        <span style={styles.findingCategory}>
+                        <span className="text-textSecondary text-sm font-serif">
                           {finding.category}
                         </span>
                       </div>
-                      <p style={styles.findingDescription}>
+                      <p className="text-base leading-relaxed font-serif text-textPrimary">
                         {finding.description}
                       </p>
                       {finding.evidence.length > 0 && (
-                        <details style={styles.evidenceDetails}>
-                          <summary style={styles.evidenceSummary}>
+                        <details className="mt-4">
+                          <summary className="text-textSecondary text-sm cursor-pointer font-serif hover:text-textPrimary transition-colors">
                             View Evidence
                           </summary>
-                          <pre style={styles.evidenceCode}>
+                          <pre className="mt-3 p-4 bg-white/10 rounded-lg text-sm overflow-auto max-h-[200px] font-mono">
                             {JSON.stringify(finding.evidence, null, 2)}
                           </pre>
                         </details>
@@ -629,437 +669,3 @@ export default function RunDetailPage() {
     </div>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    minHeight: "100vh",
-    height: "100vh",
-    display: "flex",
-    flexDirection: "column" as const,
-    background: "linear-gradient(180deg, #0a0a0f 0%, #0f0f18 100%)",
-    overflow: "hidden" as const,
-  },
-  loading: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "var(--text-secondary)",
-  },
-  header: {
-    padding: "24px 48px 32px",
-    borderBottom: "1px solid var(--border)",
-    background: "rgba(10, 10, 15, 0.8)",
-    backdropFilter: "blur(10px)",
-  },
-  backLink: {
-    color: "var(--text-secondary)",
-    fontSize: "14px",
-    marginBottom: "16px",
-    display: "inline-block",
-  },
-  headerContent: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  title: {
-    fontSize: "24px",
-    fontWeight: 600,
-    marginBottom: "8px",
-  },
-  runIdTitle: {
-    color: "var(--accent)",
-  },
-  task: {
-    color: "var(--text-secondary)",
-    fontSize: "15px",
-  },
-  statusBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "6px 14px",
-    borderRadius: "16px",
-    fontSize: "13px",
-    fontWeight: 500,
-  },
-  statusRunning: {
-    background: "rgba(99, 102, 241, 0.15)",
-    color: "#818cf8",
-  },
-  statusCompleted: {
-    background: "rgba(34, 197, 94, 0.15)",
-    color: "#4ade80",
-  },
-  statusFailed: {
-    background: "rgba(239, 68, 68, 0.15)",
-    color: "#f87171",
-  },
-  pulse: {
-    width: "8px",
-    height: "8px",
-    background: "currentColor",
-    borderRadius: "50%",
-    animation: "pulse 1.5s infinite",
-  },
-  tabs: {
-    display: "flex",
-    gap: "4px",
-    padding: "16px 48px",
-    borderBottom: "1px solid var(--border)",
-    background: "var(--bg-secondary)",
-  },
-  tab: {
-    padding: "10px 20px",
-    background: "transparent",
-    border: "none",
-    color: "var(--text-secondary)",
-    fontSize: "14px",
-    fontWeight: 500,
-    cursor: "pointer",
-    borderRadius: "8px",
-    transition: "all 0.15s",
-    fontFamily: "inherit",
-  },
-  tabActive: {
-    background: "var(--bg-tertiary)",
-    color: "var(--text-primary)",
-  },
-  main: {
-    padding: "32px 48px",
-    maxWidth: "1000px",
-    margin: "0 auto",
-    display: "flex",
-    flexDirection: "column" as const,
-    flex: 1,
-    minHeight: 0, // Important for flex children to allow scrolling
-  },
-  empty: {
-    padding: "60px",
-    textAlign: "center" as const,
-    color: "var(--text-secondary)",
-    background: "var(--bg-secondary)",
-    borderRadius: "12px",
-    border: "1px solid var(--border)",
-  },
-  emptyHint: {
-    color: "var(--text-muted)",
-    fontSize: "14px",
-    marginTop: "8px",
-  },
-  timelineContainer: {
-    flex: 1,
-    overflowY: "auto" as const,
-    overflowX: "hidden" as const,
-    paddingRight: "8px",
-  },
-  timeline: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "16px",
-  },
-  stepCard: {
-    background: "var(--bg-secondary)",
-    borderRadius: "12px",
-    border: "1px solid var(--border)",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "16px",
-  },
-  stepHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "8px",
-    paddingBottom: "12px",
-    borderBottom: "1px solid var(--border)",
-  },
-  stepHeaderRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  watchReplayButton: {
-    padding: "6px 12px",
-    background: "var(--accent)",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "12px",
-    fontWeight: 500,
-    cursor: "pointer",
-    transition: "all 0.15s",
-    fontFamily: "inherit",
-  },
-  laminarContainer: {
-    marginBottom: "24px",
-    background: "var(--bg-secondary)",
-    borderRadius: "12px",
-    border: "1px solid var(--border)",
-    padding: "20px",
-  },
-  laminarHeader: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "16px",
-  },
-  laminarIcon: {
-    fontSize: "32px",
-  },
-  laminarContent: {
-    flex: 1,
-  },
-  laminarTitle: {
-    margin: "0 0 8px 0",
-    fontSize: "18px",
-    fontWeight: 600,
-    color: "var(--text-primary)",
-  },
-  laminarDescription: {
-    margin: "0 0 16px 0",
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    lineHeight: 1.5,
-  },
-  laminarButton: {
-    display: "inline-block",
-    padding: "10px 20px",
-    background: "var(--accent)",
-    color: "white",
-    textDecoration: "none",
-    borderRadius: "8px",
-    fontSize: "14px",
-    fontWeight: 500,
-    transition: "all 0.15s",
-  },
-  videoContainer: {
-    marginBottom: "24px",
-    background: "var(--bg-secondary)",
-    borderRadius: "12px",
-    border: "1px solid var(--border)",
-    padding: "16px",
-    overflow: "hidden",
-  },
-  video: {
-    width: "100%",
-    maxHeight: "600px",
-    borderRadius: "8px",
-  },
-  stepTitle: {
-    margin: 0,
-    fontSize: "18px",
-    fontWeight: 600,
-    color: "var(--text-primary)",
-  },
-  stepTime: {
-    color: "var(--text-muted)",
-    fontSize: "12px",
-    fontFamily: "JetBrains Mono, monospace",
-  },
-  reasoningSection: {
-    background: "rgba(168, 85, 247, 0.08)",
-    borderRadius: "8px",
-    padding: "16px",
-    border: "1px solid rgba(168, 85, 247, 0.2)",
-  },
-  reasoningHeader: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#c084fc",
-    marginBottom: "12px",
-  },
-  reasoningItem: {
-    marginBottom: "12px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "4px",
-  },
-  reasoningLabel: {
-    fontSize: "13px",
-    color: "#c084fc",
-    marginBottom: "4px",
-  },
-  reasoningText: {
-    fontSize: "14px",
-    color: "var(--text-primary)",
-    lineHeight: 1.6,
-  },
-  actionsSection: {
-    background: "rgba(99, 102, 241, 0.08)",
-    borderRadius: "8px",
-    padding: "16px",
-    border: "1px solid rgba(99, 102, 241, 0.2)",
-  },
-  actionsHeader: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#818cf8",
-    marginBottom: "12px",
-  },
-  actionItem: {
-    marginBottom: "8px",
-  },
-  eventCard: {
-    background: "var(--bg-secondary)",
-    borderRadius: "10px",
-    border: "1px solid var(--border)",
-    padding: "16px",
-  },
-  eventHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "12px",
-  },
-  eventType: {
-    padding: "4px 10px",
-    borderRadius: "6px",
-    fontSize: "12px",
-    fontWeight: 500,
-  },
-  eventTypeAction: {
-    background: "rgba(99, 102, 241, 0.15)",
-    color: "#818cf8",
-  },
-  eventTypeReasoning: {
-    background: "rgba(168, 85, 247, 0.15)",
-    color: "#c084fc",
-  },
-  eventTime: {
-    color: "var(--text-muted)",
-    fontSize: "12px",
-    fontFamily: "JetBrains Mono, monospace",
-  },
-  eventPayload: {},
-  actionContent: {
-    display: "flex",
-    flexWrap: "wrap" as const,
-    gap: "12px",
-    alignItems: "center",
-  },
-  actionKind: {
-    background: "var(--bg-tertiary)",
-    padding: "6px 12px",
-    borderRadius: "6px",
-    fontWeight: 600,
-    fontSize: "13px",
-  },
-  actionSelector: {
-    color: "var(--accent)",
-    fontSize: "13px",
-  },
-  actionUrl: {
-    color: "var(--text-secondary)",
-    fontSize: "13px",
-  },
-  actionValue: {
-    color: "var(--text-primary)",
-    fontSize: "13px",
-    fontStyle: "italic",
-  },
-  reasoningContent: {
-    color: "var(--text-primary)",
-    fontSize: "14px",
-    lineHeight: 1.6,
-  },
-  securityReport: {},
-  summaryCard: {
-    background: "var(--bg-secondary)",
-    borderRadius: "12px",
-    border: "1px solid var(--border)",
-    padding: "24px",
-    marginBottom: "24px",
-  },
-  summaryTitle: {
-    fontSize: "16px",
-    fontWeight: 600,
-    marginBottom: "20px",
-    color: "var(--text-secondary)",
-  },
-  severityGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "16px",
-  },
-  severityItem: {
-    textAlign: "center" as const,
-    padding: "16px",
-    background: "var(--bg-tertiary)",
-    borderRadius: "10px",
-  },
-  severityCount: {
-    fontSize: "32px",
-    fontWeight: 700,
-    marginBottom: "4px",
-  },
-  severityLabel: {
-    fontSize: "12px",
-    color: "var(--text-muted)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-  },
-  noFindings: {
-    padding: "60px",
-    textAlign: "center" as const,
-    background: "var(--bg-secondary)",
-    borderRadius: "12px",
-    border: "1px solid var(--border)",
-    color: "var(--success)",
-  },
-  noFindingsIcon: {
-    fontSize: "48px",
-    marginBottom: "12px",
-  },
-  findingsList: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "12px",
-  },
-  findingCard: {
-    background: "var(--bg-secondary)",
-    borderRadius: "10px",
-    border: "1px solid var(--border)",
-    padding: "20px",
-  },
-  findingHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    marginBottom: "12px",
-  },
-  severityBadge: {
-    padding: "4px 10px",
-    borderRadius: "6px",
-    fontSize: "11px",
-    fontWeight: 700,
-    letterSpacing: "0.5px",
-  },
-  findingCategory: {
-    color: "var(--text-secondary)",
-    fontSize: "13px",
-  },
-  findingDescription: {
-    fontSize: "14px",
-    lineHeight: 1.5,
-  },
-  evidenceDetails: {
-    marginTop: "16px",
-  },
-  evidenceSummary: {
-    color: "var(--text-secondary)",
-    fontSize: "13px",
-    cursor: "pointer",
-  },
-  evidenceCode: {
-    marginTop: "12px",
-    padding: "16px",
-    background: "var(--bg-tertiary)",
-    borderRadius: "8px",
-    fontSize: "12px",
-    overflow: "auto",
-    maxHeight: "200px",
-    fontFamily: "JetBrains Mono, monospace",
-  },
-};

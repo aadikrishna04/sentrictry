@@ -98,7 +98,7 @@ class SentricMonitor:
                 json=payload,
                 cookies=cookies,
                 headers=headers,
-                timeout=10,
+                timeout=30,
             )
 
             r.raise_for_status()
