@@ -544,7 +544,7 @@ export SECURITY_ANALYZER_LLM_MODEL="gpt-4o"`}
             <div>
               <h2 className="text-2xl font-semibold text-white font-display mb-4">What is Laminar?</h2>
               <p className="text-textSecondary font-serif mb-4 leading-relaxed">
-                <a href="https://laminar.ai" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
+                <a href="https://laminar.sh" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
                   Laminar <ExternalLink size={14} />
                 </a> is an observability platform that captures real-time browser recordings 
                 synchronized with agent steps. When integrated with Sentric, you can watch exactly 
