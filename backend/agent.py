@@ -50,10 +50,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 LLM_MODEL = "gpt-5-mini"  # or any supported model
 START_URL = "https://www.google.com"
 
-# Connect to Chromium via Playwright with video recording enabled
-videos_dir = os.path.join(os.path.dirname(__file__), "..", "videos")
-os.makedirs(videos_dir, exist_ok=True)
-
+# Connect to Chromium via Playwright
 browser = Browser(
     executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     user_data_dir=os.path.expanduser("~/Library/Application Support/Google/Chrome"),
@@ -65,8 +62,6 @@ browser = Browser(
     max_iframes=10,
     max_iframe_depth=2,
     cross_origin_iframes=False,
-    record_video_dir=videos_dir,
-    record_video_size={"width": 1280, "height": 720},
 )
 
 

@@ -18,14 +18,10 @@ from fastapi import (
     WebSocketDisconnect,
     Header,
     Cookie,
-    File,
-    UploadFile,
-    Form,
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse
 from jose import JWTError, jwt
 import bcrypt
 from datetime import datetime, timedelta
@@ -33,7 +29,6 @@ import aiosqlite
 import secrets
 import os
 from pathlib import Path
-import shutil
 
 # How long before a "running" run is considered stale and marked as failed
 STALE_RUN_TIMEOUT_SECONDS = 30  # 30 seconds without activity = stale
@@ -42,9 +37,6 @@ from database import init_db, seed_demo_data, get_db, DB_PATH
 
 # Project root = one level up from backend/ directory
 ROOT_DIR = Path(__file__).resolve().parents[1]
-# Video storage directory at project root
-VIDEOS_DIR = ROOT_DIR / "videos"
-VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 from models import (
     RunStartRequest,
     RunStartResponse,
@@ -286,42 +278,13 @@ async def end_run(
     req: Request,
     auth: dict = Depends(verify_api_key),
 ):
-    # Support both JSON (backward compatibility) and Form data (for video upload)
-    content_type = req.headers.get("content-type", "")
-
-    run_status = None
-    video_start_time = None
-    laminar_trace_id = None
-    video = None
-    video_path = None
-
-    if "multipart/form-data" in content_type:
-        # Form data with potential video upload
-        form = await req.form()
-        run_status = form.get("status")
-        video_start_time = form.get("video_start_time")
-        laminar_trace_id = form.get("laminar_trace_id")
-        video = form.get("video")
-        if video and hasattr(video, "file"):
-            # Save video file
-            try:
-                video_filename = f"{run_id}.webm"
-                video_path = str(VIDEOS_DIR / video_filename)
-                with open(video_path, "wb") as f:
-                    content = await video.read()
-                    f.write(content)
-                print(f"[Sentric] Video saved: {video_path}")
-            except Exception as e:
-                print(f"[Sentric] Warning: Failed to save video: {e}")
-    else:
-        # JSON data
-        try:
-            data = await req.json()
-            run_status = data.get("status")
-            video_start_time = data.get("video_start_time")
-            laminar_trace_id = data.get("laminar_trace_id")
-        except:
-            pass
+    # Parse JSON request
+    try:
+        data = await req.json()
+        run_status = data.get("status")
+        laminar_trace_id = data.get("laminar_trace_id")
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON data")
 
     if not run_status:
         raise HTTPException(status_code=400, detail="Status is required")
@@ -334,17 +297,9 @@ async def end_run(
         if not await cursor.fetchone():
             raise HTTPException(status_code=404, detail="Run not found")
 
-        # Update run status and video info
+        # Update run status and laminar trace ID
         update_query = "UPDATE runs SET status = ?, end_time = ?"
         update_params = [run_status, datetime.utcnow().isoformat()]
-
-        if video_path:
-            update_query += ", video_path = ?"
-            update_params.append(video_path)
-
-        if video_start_time:
-            update_query += ", video_start_time = ?"
-            update_params.append(video_start_time)
 
         if laminar_trace_id:
             update_query += ", laminar_trace_id = ?"
@@ -976,9 +931,7 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
                 event_data["video_timestamp"] = r["video_timestamp"]
             events.append(event_data)
 
-        # Get video info from run
-        video_path = run_dict.get("video_path")
-        video_start_time = run_dict.get("video_start_time")
+        # Get laminar trace ID from run
         laminar_trace_id = run_dict.get("laminar_trace_id")
 
         # Get findings
@@ -1007,53 +960,11 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
             "findings": findings,
         }
 
-        # Add video info if available
-        if video_path:
-            result["video_path"] = video_path
-        if video_start_time:
-            result["video_start_time"] = video_start_time
+        # Add laminar trace ID if available
         if laminar_trace_id:
             result["laminar_trace_id"] = laminar_trace_id
 
         return result
-
-
-@app.get("/api/runs/{run_id}/video")
-async def get_run_video(run_id: str, user: dict = Depends(get_current_user)):
-    """Serve video file for a run."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        # Get run and verify user owns it
-        cursor = await db.execute(
-            """
-            SELECT r.video_path FROM runs r
-            JOIN projects p ON r.project_id = p.id
-            WHERE r.id = ? AND (r.user_id = ? OR (r.user_id IS NULL AND p.user_id = ?))
-        """,
-            (run_id, user["id"], user["id"]),
-        )
-        run = await cursor.fetchone()
-        if not run:
-            raise HTTPException(status_code=404, detail="Run not found")
-
-        video_path = run["video_path"]
-        if not video_path or not os.path.exists(video_path):
-            raise HTTPException(status_code=404, detail="Video not found")
-
-        # Infer media type from file extension
-        ext = Path(video_path).suffix.lower()
-        if ext == ".mp4":
-            media_type = "video/mp4"
-        elif ext == ".webm":
-            media_type = "video/webm"
-        else:
-            media_type = "application/octet-stream"
-
-        return FileResponse(
-            video_path,
-            media_type=media_type,
-            filename=f"{run_id}{ext or ''}",
-        )
 
 
 @app.get("/api/stats/overview", response_model=StatsOverviewResponse)
@@ -1123,7 +1034,6 @@ async def get_stats_overview(user: dict = Depends(get_current_user)):
             active_projects=active_projects,
             total_actions=total_actions,
         )
-
 
 
 @app.get("/api/stats/daily", response_model=DailyStatsResponse)
