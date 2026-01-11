@@ -43,6 +43,7 @@ async def init_db():
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 user_id TEXT,
+                name TEXT,
                 task TEXT,
                 status TEXT DEFAULT 'running',
                 start_time TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -106,6 +107,8 @@ async def init_db():
                 await db.execute("ALTER TABLE runs ADD COLUMN laminar_trace_id TEXT")
             if "user_id" not in columns:
                 await db.execute("ALTER TABLE runs ADD COLUMN user_id TEXT")
+            if "name" not in columns:
+                await db.execute("ALTER TABLE runs ADD COLUMN name TEXT")
                 await db.commit()
 
             # Always try to backfill NULL user_ids from associated projects

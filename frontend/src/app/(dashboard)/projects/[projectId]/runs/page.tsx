@@ -18,6 +18,7 @@ import {
 interface Run {
   id: string;
   project_id: string;
+  name: string | null;
   task: string | null;
   status: string;
   start_time: string;
@@ -246,7 +247,7 @@ export default function ProjectRunsPage() {
               <thead>
                 <tr className="border-b border-white/5 text-[11px] text-textSecondary font-serif uppercase tracking-widest bg-white/[0.01]">
                   <th className="px-6 py-4 font-normal">Run ID</th>
-                  <th className="px-6 py-4 font-normal">Goal / Task</th>
+                  <th className="px-6 py-4 font-normal">Name</th>
                   <th className="px-6 py-4 font-normal">Status</th>
                   <th className="px-6 py-4 font-normal">Timestamp</th>
                   <th className="px-6 py-4 font-normal">Duration</th>
@@ -265,7 +266,7 @@ export default function ProjectRunsPage() {
                     </td>
                     <td className="px-6 py-5">
                       <span className="font-serif text-white opacity-90 group-hover:opacity-100 max-w-[250px] truncate block">
-                        {run.task || "Generic Security Test"}
+                        {run.name || run.id.slice(0, 8)}
                       </span>
                     </td>
                     <td className="px-6 py-5">

@@ -55,6 +55,7 @@ interface RecentRun {
   id: string;
   project_id: string;
   project_name: string;
+  name: string | null;
   task: string | null;
   status: string;
   start_time: string;
@@ -431,7 +432,7 @@ export default function OverviewPage() {
                     <tr className="text-[10px] text-textSecondary font-serif uppercase tracking-widest opacity-50 border-b border-white/5">
                       <th className="pb-4 font-normal">Project</th>
                       <th className="pb-4 font-normal">Run ID</th>
-                      <th className="pb-4 font-normal">Goal / Task</th>
+                      <th className="pb-4 font-normal">Name</th>
                       <th className="pb-4 font-normal">Status</th>
                       <th className="pb-4 font-normal">Timestamp</th>
                     </tr>
@@ -450,7 +451,7 @@ export default function OverviewPage() {
                           {run.id.slice(0, 8)}
                         </td>
                         <td className="py-4 text-textSecondary group-hover:text-white transition-colors truncate max-w-[200px]">
-                          {run.task || "Generic Security Test"}
+                          {run.name || run.id.slice(0, 8)}
                         </td>
                         <td className="py-4">
                           <div className="flex items-center gap-1.5 font-serif capitalize">

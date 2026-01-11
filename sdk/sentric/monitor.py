@@ -97,12 +97,12 @@ class SentricMonitor:
             # Failed to make public - log but don't fail the run
             print(f"[Sentric] ⚠️  Could not make Laminar trace public: {e}")
 
-    def _start_run(self, task: Optional[str] = None) -> None:
+    def _start_run(self, task: Optional[str] = None, name: Optional[str] = None) -> None:
         """Start a new run on the Sentric backend."""
         try:
             resp = requests.post(
                 f"{self.base_url}/runs/start",
-                json={"task": task},
+                json={"task": task, "name": name},
                 headers=self._headers(),
                 timeout=5,
             )
@@ -539,17 +539,18 @@ class SentricMonitor:
         self._original_callbacks.clear()
 
     @asynccontextmanager
-    async def wrap(self, agent: Any):
+    async def wrap(self, agent: Any, name: Optional[str] = None):
         """Async context manager to wrap an agent for monitoring.
 
         Args:
             agent: A BrowserUse Agent instance
+            name: Optional name for the run. If not provided, run ID or task may be used.
 
         Yields:
             The same agent, now monitored
 
         Usage:
-            async with monitor.wrap(agent):
+            async with monitor.wrap(agent, name="My Security Scan"):
                 await agent.run()
 
         Raises:
@@ -560,7 +561,7 @@ class SentricMonitor:
 
         # Start run - this will raise ValueError if API key is invalid
         try:
-            self._start_run(task)
+            self._start_run(task, name)
         except ValueError as e:
             # API key validation failed - don't start the agent
             print(f"\n❌ {e}")

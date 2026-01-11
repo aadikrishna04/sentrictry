@@ -131,7 +131,7 @@ agent = Agent(
 async def run_agent_core():
     """Core agent execution logic. Gets trace ID at the end while span is still active."""
     # Start Sentric monitoring - validates API key immediately
-    async with monitor.wrap(agent):
+    async with monitor.wrap(agent, name="Weather Check Agent"):
         print("✅ Sentric API key validated")
         print("The browser will open with your logged-in sessions and extensions...\n")
 

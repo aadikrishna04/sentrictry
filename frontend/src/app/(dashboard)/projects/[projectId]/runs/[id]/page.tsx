@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { Target } from "lucide-react";
 
 interface Event {
   type: "action" | "reasoning" | "step_start" | "step_reasoning";
@@ -33,6 +34,7 @@ interface Finding {
 interface Run {
   id: string;
   project_id: string;
+  name: string | null;
   task: string | null;
   status: string;
   start_time: string;
@@ -352,13 +354,11 @@ export default function RunDetailPage() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-2xl font-semibold mb-2 font-serif">
-              <code className="text-accent font-mono">{run.id}</code>
+              <span className="text-white">{run.name || run.id}</span>
             </h1>
-            {run.task && (
-              <p className="text-[15px] text-textSecondary font-serif">
-                {run.task}
-              </p>
-            )}
+            <p className="text-[15px] text-textSecondary font-mono opacity-60">
+                {run.id}
+            </p>
           </div>
           <div>
             <span
@@ -452,6 +452,21 @@ export default function RunDetailPage() {
                 </div>
               )}
             <div className="flex flex-col gap-4">
+              {run.task && (
+                <div className="bg-white/[0.03] backdrop-blur-sm rounded-xl border border-amber-500/20 p-5 flex flex-col gap-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="p-1.5 bg-amber-500/10 rounded-lg">
+                       <Target size={18} className="text-amber-500" />
+                    </div>
+                    <h3 className="m-0 text-sm font-semibold text-amber-500 uppercase tracking-wider font-serif">
+                       Primary Goal
+                    </h3>
+                  </div>
+                  <p className="text-[15px] text-textPrimary leading-relaxed font-serif bg-amber-500/5 p-4 rounded-lg border border-amber-500/10 italic">
+                    {run.task}
+                  </p>
+                </div>
+              )}
               {run.events.length === 0 ? (
                 <div className="py-16 px-12 text-center text-textSecondary bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 font-serif">
                   <p>No events yet</p>

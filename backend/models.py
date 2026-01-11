@@ -4,6 +4,7 @@ from datetime import datetime
 
 
 class RunStartRequest(BaseModel):
+    name: Optional[str] = None
     task: Optional[str] = None
 
 
@@ -43,6 +44,7 @@ class SecurityFinding(BaseModel):
 class RunSummary(BaseModel):
     id: str
     project_id: str
+    name: Optional[str]
     task: Optional[str]
     status: str
     start_time: str
@@ -57,6 +59,7 @@ class RunWithProject(RunSummary):
 class RunDetail(BaseModel):
     id: str
     project_id: str
+    name: Optional[str]
     task: Optional[str]
     status: str
     start_time: str

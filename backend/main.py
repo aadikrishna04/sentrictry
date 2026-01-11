@@ -251,14 +251,38 @@ async def verify_project_access(
 @app.post("/runs/start", response_model=RunStartResponse)
 async def start_run(request: RunStartRequest, auth: dict = Depends(verify_api_key)):
     run_id = f"run_{uuid.uuid4().hex[:12]}"
+    
+    # Process run name
+    run_name = request.name
+    if not run_name:
+        run_name = run_id
+    else:
+        # Check for duplicate names in the same project
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT name FROM runs WHERE project_id = ? AND name LIKE ?",
+                (auth["project_id"], f"{run_name}%")
+            )
+            existing_names = [row[0] for row in await cursor.fetchall()]
+            
+            if run_name in existing_names:
+                # Find how many duplicates exist
+                count = 1
+                while True:
+                    candidate = f"({count}) {run_name}"
+                    if candidate not in existing_names:
+                        run_name = candidate
+                        break
+                    count += 1
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO runs (id, project_id, user_id, task, status, start_time) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO runs (id, project_id, user_id, name, task, status, start_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 auth["project_id"],
                 auth["user_id"],
+                run_name,
                 request.task,
                 "running",
                 datetime.utcnow().isoformat(),
@@ -840,6 +864,7 @@ async def list_runs(
             {
                 "id": row["id"],
                 "project_id": row["project_id"],
+                "name": row["name"],
                 "task": row["task"],
                 "status": row["status"],
                 "start_time": row["start_time"],
@@ -915,6 +940,7 @@ async def get_recent_runs(limit: int = 5, user: dict = Depends(get_current_user)
             {
                 "id": row["id"],
                 "project_id": row["project_id"],
+                "name": row["name"],
                 "task": row["task"],
                 "status": row["status"],
                 "start_time": row["start_time"],
@@ -984,6 +1010,7 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
         result = {
             "id": run_dict["id"],
             "project_id": run_dict["project_id"],
+            "name": run_dict["name"],
             "task": run_dict["task"],
             "status": run_dict["status"],
             "start_time": run_dict["start_time"],
