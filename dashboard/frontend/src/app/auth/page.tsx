@@ -87,11 +87,8 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-5">
       <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-10 w-full max-w-[400px]">
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <div className="w-10 h-10 bg-gradient-to-br from-accent via-accent to-accentHover rounded-[10px] flex items-center justify-center font-bold text-xl font-logo">
-            S
-          </div>
-          <span className="text-3xl font-medium tracking-tight text-textPrimary font-logo">
+        <div className="mb-8 justify-center">
+          <span className="text-3xl font-medium tracking-tight text-textPrimary font-logo text-center block">
             Sentric
           </span>
         </div>
