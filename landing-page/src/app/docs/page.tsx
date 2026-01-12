@@ -222,7 +222,6 @@ const DocsPage = () => {
                       id="env-vars-docs"
                       code={`export SENTRIC_API_KEY="sk_your_api_key_here"
 export OPENAI_API_KEY="your_openai_key"  # Required for agent LLM`}
-                      language="bash"
                     />
                   </div>
 
@@ -485,7 +484,6 @@ pip install lmnr
 
 # 2. Set your Laminar API key
 export LMNR_PROJECT_API_KEY="your_laminar_key"`}
-                    language="bash"
                   />
                 </div>
               </div>
