@@ -5,7 +5,7 @@ import { ArrowRight, Lock, Copy, Check } from "lucide-react";
 
 const Hero: React.FC = () => {
   const [copied, setCopied] = useState(false);
-  const command = "curl -fSsL https://app.sentric.ai/cli | sh";
+  const command = "curl -fSsL https://app.sentriclabs.com/cli | sh";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(command);
@@ -14,7 +14,7 @@ const Hero: React.FC = () => {
   };
 
   return (
-    <section className="relative w-full px-6 md:px-12 pt-40 pb-32 flex flex-col items-center justify-center min-h-screen">
+    <section id="home" className="relative w-full px-6 md:px-12 pt-40 pb-32 flex flex-col items-center justify-center min-h-screen">
       
       {/* 1. Closed Beta Badge (Pill) */}
       <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1 mb-8">

@@ -158,14 +158,14 @@ async def seed_demo_data():
             )
             await db.execute(
                 "INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)",
-                ("user_demo", "demo@sentric.ai", password_hash, "Demo User"),
+                ("user_demo", "demo@sentriclabs.com", password_hash, "Demo User"),
             )
         except ImportError:
             # Fallback if bcrypt not installed during init
             password_hash = "$2b$12$dummy"  # Dummy hash - user will need to reset
             await db.execute(
                 "INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)",
-                ("user_demo", "demo@sentric.ai", password_hash, "Demo User"),
+                ("user_demo", "demo@sentriclabs.com", password_hash, "Demo User"),
             )
 
         # Create demo project

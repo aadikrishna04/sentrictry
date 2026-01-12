@@ -26,7 +26,7 @@ const Features: React.FC = () => {
   ];
 
   return (
-    <section id="product" className="w-full py-24 bg-background border-b border-white/5 relative">
+    <section id="features" className="w-full py-24 bg-background border-b border-white/5 relative">
       <div className="max-w-7xl mx-auto px-6 md:px-12">
         <div className="mb-16">
             <h2 className="text-3xl font-mono text-white mb-4 uppercase tracking-wider">Platform Capabilities</h2>

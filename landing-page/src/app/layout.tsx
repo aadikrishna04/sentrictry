@@ -43,6 +43,7 @@ export default function RootLayout({
       lang="en"
       style={{ fontSize: "14px" }}
       className={`${manrope.variable} ${playfair.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
       <body style={{ fontSize: "14px", margin: 0, padding: 0 }}>
         {children}

@@ -25,15 +25,24 @@ const Navbar: React.FC = () => {
       <div className="flex items-center justify-between max-w-7xl mx-auto px-6">
         {/* Logo - Serif/Logo Font from Design Spec */}
         <div className="flex items-center gap-2 cursor-pointer group">
-          <span className="text-3xl font-logo tracking-tight text-white font-bold">
-            Sentric
-          </span>
+          <a href="/#home" className="flex items-center gap-2">
+            <span className="text-3xl font-logo tracking-tight text-white font-bold">
+              Sentric
+            </span>
+          </a>
+        </div>
+
+        {/* Navigation Links */}
+        <div className="hidden md:flex items-center gap-8">
+          <a href="/#features" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Features</a>
+          <a href="/#architecture" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Architecture</a>
+          <a href="/docs" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Docs</a>
         </div>
 
         {/* Action Button - Dashboard */}
         <div className="flex items-center">
           <a
-            href="https://app.sentric.ai"
+            href="https://app.sentriclabs.com"
             className="group flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-2.5 rounded-xl transition-all"
           >
             <span className="text-sm font-medium font-sans text-white">Dashboard</span>

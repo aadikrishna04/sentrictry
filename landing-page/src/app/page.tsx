@@ -46,7 +46,7 @@ export default function Page() {
                     <div className="flex gap-6">
                         <a href="#" className="text-textSecondary hover:text-white text-sm font-mono uppercase">Privacy</a>
                         <a href="#" className="text-textSecondary hover:text-white text-sm font-mono uppercase">Terms</a>
-                        <a href="mailto:security@sentric.ai" className="text-textSecondary hover:text-white text-sm font-mono uppercase">Contact</a>
+                        <a href="mailto:security@sentriclabs.com" className="text-textSecondary hover:text-white text-sm font-mono uppercase">Contact</a>
                     </div>
                 </div>
             </footer>

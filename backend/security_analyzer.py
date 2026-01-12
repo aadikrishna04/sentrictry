@@ -111,7 +111,7 @@ Return your findings as a JSON object with a 'findings' key containing an array 
     try:
         # Use JSON mode for structured output (requires response to be a JSON object)
         model = os.getenv("SECURITY_ANALYZER_LLM_MODEL", "gpt-4o-mini")
-        use_json_mode = "gpt-4" in model or "o1" not in model
+        use_json_mode = "gpt-5-mini"
         
         response = client.chat.completions.create(
             model=model,

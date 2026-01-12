@@ -56,7 +56,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout }) => {
     { name: "Projects", href: "/projects", icon: FolderKanban },
     { name: "API Keys", href: "/api-keys", icon: Key },
     { type: "divider" },
-    { name: "Docs", href: "/docs", icon: FileText },
+    { name: "Docs", href: "https://sentriclabs.com/docs", icon: FileText },
   ];
 
   const isActive = (href: string) => {

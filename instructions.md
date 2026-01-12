@@ -150,7 +150,7 @@ Response:
 ```json
 {
   "run_id": "run_abc123",
-  "ws_url": "wss://sentric.ai/ws/run_abc123"
+  "ws_url": "wss://sentriclabs.com/ws/run_abc123"
 }
 ```
 
