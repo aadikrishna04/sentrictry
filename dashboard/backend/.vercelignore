@@ -1,0 +1,12 @@
+# Ignore everything except Python files
+package.json
+package-lock.json
+node_modules
+*.js
+*.ts
+*.tsx
+*.jsx
+next.config.*
+tsconfig.json
+tailwind.config.*
+postcss.config.*
