@@ -1,0 +1,28 @@
+# Production requirements for Vercel deployment
+# Minimal set of dependencies needed for FastAPI backend
+
+# Core FastAPI and server
+fastapi>=0.128.0
+uvicorn>=0.27.0
+starlette>=0.40.0
+
+# Authentication and security
+python-jose[cryptography]>=3.5.0
+bcrypt>=5.0.0
+pydantic[email]>=2.12.0
+email-validator>=2.3.0
+
+# Database (Supabase)
+supabase>=2.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Async support
+anyio>=4.12.0
+
+# HTTP client (used by Supabase)
+httpx>=0.28.0
+
+# Utilities
+python-dateutil>=2.9.0
