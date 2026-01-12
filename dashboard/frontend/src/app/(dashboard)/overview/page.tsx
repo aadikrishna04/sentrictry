@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { format, subDays, parseISO } from "date-fns";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 interface DailyData {
   day: string;

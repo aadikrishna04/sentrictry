@@ -10,7 +10,7 @@ interface User {
   name: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 export default function DashboardLayout({
   children,

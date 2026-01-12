@@ -46,7 +46,7 @@ interface Run {
   laminar_trace_id?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 export default function RunDetailPage() {
   const params = useParams();
