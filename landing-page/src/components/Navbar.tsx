@@ -35,9 +35,24 @@ const Navbar: React.FC = () => {
 
         {/* Navigation Links */}
         <div className="hidden md:flex items-center gap-8">
-          <Link href="/#features" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Features</Link>
-          <Link href="/#architecture" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Architecture</Link>
-          <Link href="/docs" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Docs</Link>
+          <Link
+            href="/#features"
+            className="text-sm font-medium text-textSecondary hover:text-white transition-colors"
+          >
+            Features
+          </Link>
+          <Link
+            href="/#architecture"
+            className="text-sm font-medium text-textSecondary hover:text-white transition-colors"
+          >
+            Architecture
+          </Link>
+          <Link
+            href="/docs"
+            className="text-sm font-medium text-textSecondary hover:text-white transition-colors"
+          >
+            Docs
+          </Link>
         </div>
 
         {/* Action Button - Dashboard */}
@@ -46,7 +61,9 @@ const Navbar: React.FC = () => {
             href="https://app.sentriclabs.com"
             className="group flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-2.5 rounded-xl transition-all"
           >
-            <span className="text-sm font-medium font-sans text-white">Dashboard</span>
+            <span className="text-sm font-medium font-sans text-white">
+              Dashboard
+            </span>
             <ArrowRight className="w-4 h-4 text-white/50 group-hover:text-white transition-colors" />
           </a>
         </div>

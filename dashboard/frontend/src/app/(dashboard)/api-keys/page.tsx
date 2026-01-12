@@ -61,15 +61,23 @@ function ApiKeysContent() {
 
       if (keysRes.ok) {
         const keysData = await keysRes.json();
-        setKeys(keysData.keys);
+        console.log("API Keys Response:", keysData);
+        console.log("Keys array:", keysData.keys);
+        setKeys(keysData.keys || []);
+      } else {
+        const errorText = await keysRes.text();
+        console.error("Failed to fetch API keys:", keysRes.status, errorText);
       }
 
       if (projectsRes.ok) {
         const projectsData = await projectsRes.json();
-        setProjects(projectsData.projects);
-        if (projectsData.projects.length > 0 && !selectedProject) {
+        setProjects(projectsData.projects || []);
+        if (projectsData.projects && projectsData.projects.length > 0 && !selectedProject) {
           setSelectedProject(initialProjectId || projectsData.projects[0].id);
         }
+      } else {
+        const errorText = await projectsRes.text();
+        console.error("Failed to fetch projects:", projectsRes.status, errorText);
       }
     } catch (e) {
       console.error("Failed to fetch:", e);

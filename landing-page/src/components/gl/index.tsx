@@ -65,7 +65,6 @@ export const GL = ({ hovering }: { hovering: boolean }) => {
           timeScale={timeScale}
           pointSize={pointSize}
           opacity={opacity}
-
           useManualTime={useManualTime}
           manualTime={manualTime}
           introspect={hovering}
@@ -81,4 +80,3 @@ export const GL = ({ hovering }: { hovering: boolean }) => {
     </div>
   );
 };
-

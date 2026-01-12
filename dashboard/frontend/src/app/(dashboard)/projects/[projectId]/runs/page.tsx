@@ -117,12 +117,17 @@ export default function ProjectRunsPage() {
       );
       if (res.ok) {
         const data = await res.json();
-        setRuns(data.runs);
-        setTotalCount(data.total_count);
-        setTotalPages(data.total_pages);
-        setSuccessRate(data.success_rate);
-        setAvgDuration(data.avg_duration);
-        setTotalFindings(data.total_findings);
+        console.log("Runs Response:", data);
+        console.log("Runs array:", data.runs);
+        setRuns(data.runs || []);
+        setTotalCount(data.total_count || 0);
+        setTotalPages(data.total_pages || 0);
+        setSuccessRate(data.success_rate || 0);
+        setAvgDuration(data.avg_duration || 0);
+        setTotalFindings(data.total_findings || 0);
+      } else {
+        const errorText = await res.text();
+        console.error("Failed to fetch runs:", res.status, errorText);
       }
     } catch (e) {
       console.error("Failed to fetch runs:", e);
