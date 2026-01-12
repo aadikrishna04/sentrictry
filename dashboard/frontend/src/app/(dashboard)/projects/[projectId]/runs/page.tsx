@@ -3,16 +3,16 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { 
-  Activity, 
-  Clock, 
-  ShieldAlert, 
+import {
+  Activity,
+  Clock,
+  ShieldAlert,
   Zap,
   ChevronRight,
   Filter,
   Download,
   Key,
-  Plus
+  Plus,
 } from "lucide-react";
 
 interface Run {
@@ -27,17 +27,18 @@ interface Run {
 }
 
 interface Project {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 export default function ProjectRunsPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Pagination state
   const [page, setPage] = useState(1);
   const [limit] = useState(5);
@@ -48,7 +49,7 @@ export default function ProjectRunsPage() {
   const [successRate, setSuccessRate] = useState(0);
   const [avgDuration, setAvgDuration] = useState(0);
   const [totalFindings, setTotalFindings] = useState(0);
-  
+
   const router = useRouter();
   const params = useParams();
   const projectId = params.projectId as string;
@@ -56,8 +57,8 @@ export default function ProjectRunsPage() {
   useEffect(() => {
     fetchProjectAndRuns();
     const interval = setInterval(() => {
-        // Only auto-refresh first page or if explicitly desired
-        if (page === 1) fetchRuns();
+      // Only auto-refresh first page or if explicitly desired
+      if (page === 1) fetchRuns();
     }, 5000);
     return () => clearInterval(interval);
   }, [projectId, page]);
@@ -67,22 +68,26 @@ export default function ProjectRunsPage() {
     if (!token) return;
 
     try {
-        // Fetch project details
-        const projectRes = await fetch(`${API_URL}/api/projects`, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (projectRes.ok) {
-            const data = await projectRes.json();
-            const currentProj = data.projects.find((p: Project) => p.id === projectId || (projectId === 'default' && data.projects.length > 0));
-            if (currentProj) {
-                setProject(currentProj);
-            }
+      // Fetch project details
+      const projectRes = await fetch(`${API_URL}/api/projects`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (projectRes.ok) {
+        const data = await projectRes.json();
+        const currentProj = data.projects.find(
+          (p: Project) =>
+            p.id === projectId ||
+            (projectId === "default" && data.projects.length > 0)
+        );
+        if (currentProj) {
+          setProject(currentProj);
         }
-        await fetchRuns();
+      }
+      await fetchRuns();
     } catch (e) {
-        console.error("Failed to fetch project info:", e);
+      console.error("Failed to fetch project info:", e);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   }
 
@@ -91,21 +96,21 @@ export default function ProjectRunsPage() {
     if (!token) return;
 
     let targetId = projectId;
-    
+
     if (projectId === "default") {
-        try {
-            const userRes = await fetch(`${API_URL}/api/auth/me`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (userRes.ok) {
-                const data = await userRes.json();
-                if (data.projects && data.projects.length > 0) {
-                    targetId = data.projects[0].id;
-                }
-            }
-        } catch (e) {
-            console.error("Failed to fetch default project:", e);
+      try {
+        const userRes = await fetch(`${API_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (userRes.ok) {
+          const data = await userRes.json();
+          if (data.projects && data.projects.length > 0) {
+            targetId = data.projects[0].id;
+          }
         }
+      } catch (e) {
+        console.error("Failed to fetch default project:", e);
+      }
     }
 
     try {
@@ -135,7 +140,12 @@ export default function ProjectRunsPage() {
   }
 
   function formatTime(iso: string) {
-    return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   function formatDuration(start: string, end: string | null) {
@@ -148,16 +158,31 @@ export default function ProjectRunsPage() {
   }
 
   const stats = [
-    { label: "Success Rate", value: totalCount > 0 ? `${Math.round(successRate)}%` : "—", icon: Activity, color: "text-green-400" },
-    { 
-      label: "Avg. Duration", 
-      value: totalCount > 0 ? (
-        avgDuration < 60 ? `${Math.round(avgDuration)}s` : `${Math.floor(avgDuration / 60)}m ${Math.round(avgDuration % 60)}s`
-      ) : "—", 
-      icon: Clock, 
-      color: "text-blue-400" 
+    {
+      label: "Success Rate",
+      value: totalCount > 0 ? `${Math.round(successRate)}%` : "—",
+      icon: Activity,
+      color: "text-green-400",
     },
-    { label: "Total Findings", value: totalFindings.toString(), icon: ShieldAlert, color: "text-red-400" },
+    {
+      label: "Avg. Duration",
+      value:
+        totalCount > 0
+          ? avgDuration < 60
+            ? `${Math.round(avgDuration)}s`
+            : `${Math.floor(avgDuration / 60)}m ${Math.round(
+                avgDuration % 60
+              )}s`
+          : "—",
+      icon: Clock,
+      color: "text-blue-400",
+    },
+    {
+      label: "Total Findings",
+      value: totalFindings.toString(),
+      icon: ShieldAlert,
+      color: "text-red-400",
+    },
   ];
 
   return (
@@ -165,40 +190,55 @@ export default function ProjectRunsPage() {
       <div className="flex items-center justify-between mb-10">
         <div>
           <div className="flex items-center gap-2 text-xs text-textSecondary font-serif mb-2">
-            <Link href="/projects" className="hover:text-white transition-colors">Projects</Link>
+            <Link
+              href="/projects"
+              className="hover:text-white transition-colors"
+            >
+              Projects
+            </Link>
             <ChevronRight size={12} />
-            <span className="text-white opacity-80">{project?.name || (projectId === 'default' ? 'Default Project' : projectId)}</span>
+            <span className="text-white opacity-80">
+              {project?.name ||
+                (projectId === "default" ? "Default Project" : projectId)}
+            </span>
           </div>
           <h1 className="text-4xl font-semibold text-white font-display">
             {totalCount === 0 && !loading ? "Get Started" : "Agent Runs"}
           </h1>
         </div>
-        
+
         {totalCount > 0 && (
-            <div className="flex gap-3">
+          <div className="flex gap-3">
             <button className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-serif hover:bg-white/10 transition-all">
-                <Filter size={16} />
-                Filter
+              <Filter size={16} />
+              Filter
             </button>
             <button className="flex items-center gap-2 px-4 py-2 bg-white text-background rounded-lg text-sm font-medium font-serif hover:opacity-90 transition-all">
-                <Download size={16} />
-                Export Data
+              <Download size={16} />
+              Export Data
             </button>
-            </div>
+          </div>
         )}
       </div>
 
       {/* Analytics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
         {stats.map((stat) => (
-          <div key={stat.label} className="bg-white/5 border border-white/10 p-6 rounded-2xl hover:bg-white/[0.07] transition-all group">
+          <div
+            key={stat.label}
+            className="bg-white/5 border border-white/10 p-6 rounded-2xl hover:bg-white/[0.07] transition-all group"
+          >
             <div className="flex items-center justify-between mb-4">
               <div className="p-2 bg-white/5 rounded-lg group-hover:bg-accent/10 transition-colors">
                 <stat.icon size={20} className={stat.color} />
               </div>
             </div>
-            <p className="text-textSecondary text-xs font-serif uppercase tracking-wider mb-1">{stat.label}</p>
-            <p className="text-2xl font-semibold text-white font-display mb-1">{stat.value}</p>
+            <p className="text-textSecondary text-xs font-serif uppercase tracking-wider mb-1">
+              {stat.label}
+            </p>
+            <p className="text-2xl font-semibold text-white font-display mb-1">
+              {stat.value}
+            </p>
           </div>
         ))}
       </div>
@@ -209,10 +249,12 @@ export default function ProjectRunsPage() {
             {totalCount === 0 && !loading ? "Project Setup" : "History"}
           </h2>
           {totalCount > 0 && (
-             <span className="text-xs text-textSecondary font-serif bg-white/10 px-2 py-1 rounded-full">{totalCount} Runs total</span>
+            <span className="text-xs text-textSecondary font-serif bg-white/10 px-2 py-1 rounded-full">
+              {totalCount} Runs total
+            </span>
           )}
         </div>
-        
+
         <div className="overflow-x-auto min-h-[400px]">
           {loading ? (
             <div className="py-20 min-h-[400px] flex flex-col justify-center text-center text-textSecondary font-serif animate-pulse text-sm">
@@ -222,22 +264,34 @@ export default function ProjectRunsPage() {
           ) : totalCount === 0 ? (
             <div className="py-24 min-h-[500px] flex flex-col justify-center text-center px-6">
               <div className="w-20 h-20 bg-accent/5 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-accent/10">
-                 <Activity size={32} className="text-accent opacity-50 animate-pulse" />
+                <Activity
+                  size={32}
+                  className="text-accent opacity-50 animate-pulse"
+                />
               </div>
-              <h3 className="text-2xl font-semibold text-white font-display mb-2">Waiting for agent runs...</h3>
+              <h3 className="text-2xl font-semibold text-white font-display mb-2">
+                Waiting for agent runs...
+              </h3>
               <p className="text-base text-textSecondary mb-10 max-w-md mx-auto font-serif">
-                This project has no data yet. Connect your AI agent using the Sentric SDK to start monitoring security events in real-time.
+                This project has no data yet. Connect your AI agent using the
+                Sentric SDK to start monitoring security events in real-time.
               </p>
-              
+
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button 
-                  onClick={() => router.push(`/api-keys?projectId=${project?.id || projectId}&redirect=/projects/${project?.id || projectId}/runs`)}
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/api-keys?projectId=${
+                        project?.id || projectId
+                      }&redirect=/projects/${project?.id || projectId}/runs`
+                    )
+                  }
                   className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-white text-background rounded-xl font-medium font-serif hover:opacity-90 active:scale-95 transition-all"
                 >
                   <Key size={18} />
                   Generate API Key
                 </button>
-                <Link 
+                <Link
                   href="/docs"
                   className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-white/5 border border-white/10 text-white rounded-xl font-medium font-serif hover:bg-white/10 transition-all"
                 >
@@ -248,98 +302,119 @@ export default function ProjectRunsPage() {
             </div>
           ) : (
             <>
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-white/5 text-[11px] text-textSecondary font-serif uppercase tracking-widest bg-white/[0.01]">
-                  <th className="px-6 py-4 font-normal">Run ID</th>
-                  <th className="px-6 py-4 font-normal">Name</th>
-                  <th className="px-6 py-4 font-normal">Status</th>
-                  <th className="px-6 py-4 font-normal">Timestamp</th>
-                  <th className="px-6 py-4 font-normal">Duration</th>
-                  <th className="px-6 py-4 font-normal">Findings</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm">
-                {runs.map((run) => (
-                  <tr 
-                    key={run.id}
-                    onClick={() => router.push(`/projects/${projectId}/runs/${run.id}`)}
-                    className="border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer group"
-                  >
-                    <td className="px-6 py-5">
-                      <code className="text-[12px] text-accent font-mono opacity-80 group-hover:opacity-100">{run.id.slice(0, 8)}</code>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span className="font-serif text-white opacity-90 group-hover:opacity-100 max-w-[250px] truncate block">
-                        {run.name || run.id.slice(0, 8)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${
-                          run.status === 'running' ? 'bg-accent animate-pulse' : 
-                          run.status === 'completed' ? 'bg-green-400' : 'bg-red-400'
-                        }`} />
-                        <span className="text-xs font-serif capitalize text-textSecondary group-hover:text-white transition-colors">{run.status}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5 text-textSecondary font-serif text-xs">
-                      {formatTime(run.start_time)}
-                    </td>
-                    <td className="px-6 py-5 text-textSecondary font-serif text-xs">
-                      {formatDuration(run.start_time, run.end_time)}
-                    </td>
-                    <td className="px-6 py-5">
-                      {run.finding_count > 0 ? (
-                        <span className="px-2 py-0.5 bg-red-500/10 text-red-400 text-[10px] font-bold rounded border border-red-500/20">
-                          {run.finding_count} ISSUES
-                        </span>
-                      ) : (
-                        <span className="text-green-500/40 text-[10px]">—</span>
-                      )}
-                    </td>
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5 text-[11px] text-textSecondary font-serif uppercase tracking-widest bg-white/[0.01]">
+                    <th className="px-6 py-4 font-normal">Run ID</th>
+                    <th className="px-6 py-4 font-normal">Name</th>
+                    <th className="px-6 py-4 font-normal">Status</th>
+                    <th className="px-6 py-4 font-normal">Timestamp</th>
+                    <th className="px-6 py-4 font-normal">Duration</th>
+                    <th className="px-6 py-4 font-normal">Findings</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between bg-white/[0.01]">
-                    <p className="text-xs text-textSecondary font-serif">
-                        Showing <span className="text-white">{(page - 1) * limit + 1}</span> to <span className="text-white">{Math.min(page * limit, totalCount)}</span> of <span className="text-white">{totalCount}</span> runs
-                    </p>
-                    <div className="flex gap-2">
-                        <button 
-                            disabled={page === 1}
-                            onClick={() => setPage(page - 1)}
-                            className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-serif text-textSecondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 transition-all"
-                        >
-                            Previous
-                        </button>
-                        <div className="flex items-center gap-1.5 px-2">
-                            {Array.from({ length: totalPages }).map((_, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => setPage(i + 1)}
-                                    className={`w-7 h-7 rounded-lg text-[10px] font-medium flex items-center justify-center transition-all ${
-                                        page === i + 1 ? 'bg-accent text-background shadow-lg shadow-accent/20' : 'text-textSecondary hover:bg-white/5'
-                                    }`}
-                                >
-                                    {i + 1}
-                                </button>
-                            ))}
+                </thead>
+                <tbody className="text-sm">
+                  {runs.map((run) => (
+                    <tr
+                      key={run.id}
+                      onClick={() =>
+                        router.push(`/projects/${projectId}/runs/${run.id}`)
+                      }
+                      className="border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer group"
+                    >
+                      <td className="px-6 py-5">
+                        <code className="text-[12px] text-accent font-mono opacity-80 group-hover:opacity-100">
+                          {run.id.slice(0, 8)}
+                        </code>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className="font-serif text-white opacity-90 group-hover:opacity-100 max-w-[250px] truncate block">
+                          {run.name || run.id.slice(0, 8)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              run.status === "running"
+                                ? "bg-accent animate-pulse"
+                                : run.status === "completed"
+                                ? "bg-green-400"
+                                : "bg-red-400"
+                            }`}
+                          />
+                          <span className="text-xs font-serif capitalize text-textSecondary group-hover:text-white transition-colors">
+                            {run.status}
+                          </span>
                         </div>
-                        <button 
-                            disabled={page === totalPages}
-                            onClick={() => setPage(page + 1)}
-                            className="px-4 py-1.5 bg-white text-background rounded-lg text-xs font-medium font-serif hover:opacity-90 disabled:opacity-30 transition-all"
+                      </td>
+                      <td className="px-6 py-5 text-textSecondary font-serif text-xs">
+                        {formatTime(run.start_time)}
+                      </td>
+                      <td className="px-6 py-5 text-textSecondary font-serif text-xs">
+                        {formatDuration(run.start_time, run.end_time)}
+                      </td>
+                      <td className="px-6 py-5">
+                        {run.finding_count > 0 ? (
+                          <span className="px-2 py-0.5 bg-red-500/10 text-red-400 text-[10px] font-bold rounded border border-red-500/20">
+                            {run.finding_count} ISSUES
+                          </span>
+                        ) : (
+                          <span className="text-green-500/40 text-[10px]">
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between bg-white/[0.01]">
+                  <p className="text-xs text-textSecondary font-serif">
+                    Showing{" "}
+                    <span className="text-white">{(page - 1) * limit + 1}</span>{" "}
+                    to{" "}
+                    <span className="text-white">
+                      {Math.min(page * limit, totalCount)}
+                    </span>{" "}
+                    of <span className="text-white">{totalCount}</span> runs
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={page === 1}
+                      onClick={() => setPage(page - 1)}
+                      className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-serif text-textSecondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 transition-all"
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-1.5 px-2">
+                      {Array.from({ length: totalPages }).map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPage(i + 1)}
+                          className={`w-7 h-7 rounded-lg text-[10px] font-medium flex items-center justify-center transition-all ${
+                            page === i + 1
+                              ? "bg-accent text-background shadow-lg shadow-accent/20"
+                              : "text-textSecondary hover:bg-white/5"
+                          }`}
                         >
-                            Next
+                          {i + 1}
                         </button>
+                      ))}
                     </div>
+                    <button
+                      disabled={page === totalPages}
+                      onClick={() => setPage(page + 1)}
+                      className="px-4 py-1.5 bg-white text-background rounded-lg text-xs font-medium font-serif hover:opacity-90 disabled:opacity-30 transition-all"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
-            )}
+              )}
             </>
           )}
         </div>

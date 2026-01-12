@@ -3,7 +3,8 @@ const nextConfig = {
   reactStrictMode: true,
   // Ensure environment variables are available
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://api.sentriclabs.com',
+    NEXT_PUBLIC_API_URL:
+      process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com",
   },
 };
 

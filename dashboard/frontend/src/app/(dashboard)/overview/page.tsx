@@ -27,7 +27,8 @@ import {
 } from "lucide-react";
 import { format, subDays, parseISO } from "date-fns";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 interface DailyData {
   day: string;
@@ -441,7 +442,11 @@ export default function OverviewPage() {
                     {recentRuns.map((run) => (
                       <tr
                         key={run.id}
-                        onClick={() => router.push(`/projects/${run.project_id}/runs/${run.id}`)}
+                        onClick={() =>
+                          router.push(
+                            `/projects/${run.project_id}/runs/${run.id}`
+                          )
+                        }
                         className="group cursor-pointer hover:bg-white/[0.02] transition-colors"
                       >
                         <td className="py-4 font-medium text-white opacity-80 group-hover:opacity-100">

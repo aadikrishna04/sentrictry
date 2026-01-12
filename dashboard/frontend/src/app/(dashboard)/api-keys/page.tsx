@@ -4,7 +4,8 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Key, Plus, Trash2, Copy, CheckCircle, ArrowLeft } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 interface ApiKey {
   id: string;
@@ -72,12 +73,20 @@ function ApiKeysContent() {
       if (projectsRes.ok) {
         const projectsData = await projectsRes.json();
         setProjects(projectsData.projects || []);
-        if (projectsData.projects && projectsData.projects.length > 0 && !selectedProject) {
+        if (
+          projectsData.projects &&
+          projectsData.projects.length > 0 &&
+          !selectedProject
+        ) {
           setSelectedProject(initialProjectId || projectsData.projects[0].id);
         }
       } else {
         const errorText = await projectsRes.text();
-        console.error("Failed to fetch projects:", projectsRes.status, errorText);
+        console.error(
+          "Failed to fetch projects:",
+          projectsRes.status,
+          errorText
+        );
       }
     } catch (e) {
       console.error("Failed to fetch:", e);

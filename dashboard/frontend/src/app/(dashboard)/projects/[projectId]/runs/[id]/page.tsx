@@ -46,7 +46,8 @@ interface Run {
   laminar_trace_id?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://api.sentriclabs.com";
 
 export default function RunDetailPage() {
   const params = useParams();
@@ -357,23 +358,23 @@ export default function RunDetailPage() {
               <span className="text-white">{run.name || run.id}</span>
             </h1>
             <p className="text-[15px] text-textSecondary font-mono opacity-60">
-                {run.id}
+              {run.id}
             </p>
           </div>
           <div>
             <span
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-sm font-medium font-serif ${
+              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-sm font-medium font-serif ${
                 run.status === "running"
-                    ? "bg-accent/15 text-accent"
-                    : run.status === "completed"
-                    ? "bg-green-500/15 text-green-400"
-                    : "bg-red-500/15 text-red-400"
-                }`}
+                  ? "bg-accent/15 text-accent"
+                  : run.status === "completed"
+                  ? "bg-green-500/15 text-green-400"
+                  : "bg-red-500/15 text-red-400"
+              }`}
             >
-                {run.status === "running" && (
+              {run.status === "running" && (
                 <span className="w-2 h-2 bg-current rounded-full animate-pulse" />
-                )}
-                {run.status}
+              )}
+              {run.status}
             </span>
           </div>
         </div>
@@ -456,10 +457,10 @@ export default function RunDetailPage() {
                 <div className="bg-white/[0.03] backdrop-blur-sm rounded-xl border border-amber-500/20 p-5 flex flex-col gap-3">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="p-1.5 bg-amber-500/10 rounded-lg">
-                       <Target size={18} className="text-amber-500" />
+                      <Target size={18} className="text-amber-500" />
                     </div>
                     <h3 className="m-0 text-sm font-semibold text-amber-500 uppercase tracking-wider font-serif">
-                       Primary Goal
+                      Primary Goal
                     </h3>
                   </div>
                   <p className="text-[15px] text-textPrimary leading-relaxed font-serif bg-amber-500/5 p-4 rounded-lg border border-amber-500/10 italic">
@@ -666,7 +667,7 @@ export default function RunDetailPage() {
                       </p>
                       {finding.evidence.length > 0 && (
                         <details className="mt-4">
-                           <summary className="text-textSecondary text-sm cursor-pointer font-serif hover:text-textPrimary transition-colors">
+                          <summary className="text-textSecondary text-sm cursor-pointer font-serif hover:text-textPrimary transition-colors">
                             View Evidence
                           </summary>
                           <pre className="mt-3 p-4 bg-white/10 rounded-lg text-sm overflow-auto max-h-[200px] font-mono">

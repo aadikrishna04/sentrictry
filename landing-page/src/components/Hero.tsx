@@ -68,7 +68,7 @@ const Hero: React.FC = () => {
             <div className="p-6 md:p-8 font-mono text-sm md:text-base space-y-4">
                 <div className="flex items-start gap-4 text-textSecondary">
                     <span className="text-accent select-none">$</span>
-                    <span className="typing-effect">pip install sentric-sdk</span>
+                    <span className="typing-effect">pip install sentric</span>
                 </div>
                 <div className="text-gray-500 italic pl-6">
                     Installing dependencies...
