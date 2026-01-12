@@ -9,8 +9,8 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@react-three/drei": "^9.114.0",
-    "@react-three/fiber": "^9.4.0",
+    "@react-three/drei": "^9.88.0",
+    "@react-three/fiber": "^8.15.0",
     "@supabase/supabase-js": "^2.84.0",
     "leva": "^0.10.1",
     "lucide-react": "^0.454.0",
