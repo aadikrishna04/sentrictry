@@ -1,6 +1,7 @@
 # Complete Vercel Deployment Guide
 
 This guide covers deploying all three parts of Sentric on Vercel:
+
 1. Landing Page → `www.sentriclabs.com`
 2. Dashboard → `app.sentriclabs.com`
 3. Backend API → `api.sentriclabs.com` (or subdomain of your choice)
@@ -19,6 +20,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
 1. **Go to Vercel Dashboard** → Add New Project
 2. **Import your GitHub repository**
 3. **Configure Project**:
+
    - **Project Name**: `sentric-api` (or your choice)
    - **Root Directory**: `dashboard/backend`
    - **Framework Preset**: Other (or leave blank)
@@ -27,6 +29,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
    - **Install Command**: Leave empty
 
 4. **Add Environment Variables**:
+
    ```
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
@@ -47,6 +50,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
 1. **Go to Vercel Dashboard** → Add New Project
 2. **Import the same GitHub repository**
 3. **Configure Project**:
+
    - **Project Name**: `sentric-landing` (or your choice)
    - **Root Directory**: `landing-page`
    - **Framework Preset**: Next.js (auto-detected)
@@ -65,6 +69,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
 1. **Go to Vercel Dashboard** → Add New Project
 2. **Import the same GitHub repository**
 3. **Configure Project**:
+
    - **Project Name**: `sentric-dashboard` (or your choice)
    - **Root Directory**: `dashboard/frontend`
    - **Framework Preset**: Next.js (auto-detected)
@@ -72,9 +77,11 @@ This guide covers deploying all three parts of Sentric on Vercel:
    - **Output Directory**: `.next` (auto-detected)
 
 4. **Add Environment Variables**:
+
    ```
    NEXT_PUBLIC_API_URL=https://sentric-api.vercel.app/api
    ```
+
    (Or use your custom domain: `https://api.sentriclabs.com/api`)
 
 5. **Deploy**
@@ -91,6 +98,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
 2. **Add DNS Records**:
 
    For `www.sentriclabs.com` (Landing Page):
+
    ```
    Type: CNAME
    Name: www
@@ -99,6 +107,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
    ```
 
    For `app.sentriclabs.com` (Dashboard):
+
    ```
    Type: CNAME
    Name: app
@@ -107,6 +116,7 @@ This guide covers deploying all three parts of Sentric on Vercel:
    ```
 
    For `api.sentriclabs.com` (Backend API):
+
    ```
    Type: CNAME
    Name: api
@@ -115,11 +125,13 @@ This guide covers deploying all three parts of Sentric on Vercel:
    ```
 
    For root domain `sentriclabs.com` (redirect to www):
+
    ```
    Type: A
    Name: @
    Value: 76.76.21.21
    ```
+
    (Or use Vercel's A record if provided)
 
 3. **Wait for DNS Propagation** (usually 5-30 minutes, can take up to 48 hours)
@@ -140,6 +152,7 @@ If you added a custom domain for the backend (`api.sentriclabs.com`):
 ## Environment Variables Summary
 
 ### Backend API (Vercel)
+
 ```
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
@@ -147,12 +160,15 @@ ALLOWED_ORIGINS=https://app.sentriclabs.com,http://localhost:3000
 ```
 
 ### Dashboard Frontend (Vercel)
+
 ```
 NEXT_PUBLIC_API_URL=https://sentric-api.vercel.app/api
 ```
+
 (Or `https://api.sentriclabs.com/api` if using custom domain)
 
 ### Landing Page (Vercel)
+
 ```
 (No environment variables needed)
 ```
@@ -170,12 +186,15 @@ NEXT_PUBLIC_API_URL=https://sentric-api.vercel.app/api
 ## Testing Your Deployment
 
 1. **Test Backend API**:
+
    ```bash
    curl https://sentric-api.vercel.app/api/health
    ```
+
    Should return: `{"status":"healthy","version":"0.1.0"}`
 
 2. **Test Landing Page**:
+
    - Visit `www.sentriclabs.com`
    - Should load without errors
 
@@ -188,27 +207,32 @@ NEXT_PUBLIC_API_URL=https://sentric-api.vercel.app/api
 ## Troubleshooting
 
 ### CORS Errors
+
 - Ensure `ALLOWED_ORIGINS` in backend includes `https://app.sentriclabs.com`
 - Check browser console for specific CORS error messages
 - Verify backend is allowing credentials
 
 ### API Not Found (404)
+
 - Check `NEXT_PUBLIC_API_URL` is set correctly in dashboard
 - Ensure backend URL includes `/api` prefix if needed
 - Verify backend routes are working: `curl https://your-backend.vercel.app/api/health`
 
 ### Environment Variables Not Working
+
 - Ensure variables are prefixed with `NEXT_PUBLIC_` for frontend
 - Redeploy after adding/changing environment variables
 - Check variable names match exactly (case-sensitive)
 
 ### DNS Not Resolving
+
 - Wait 24-48 hours for full propagation
 - Use `dig www.sentriclabs.com` or `nslookup www.sentriclabs.com` to check
 - Verify CNAME records in GoDaddy match Vercel's requirements
 - Check Vercel domain settings show "Valid Configuration"
 
 ### Build Failures
+
 - Check Vercel build logs for specific errors
 - Ensure all dependencies are in `package.json` (frontend) or `requirements.txt` (backend)
 - Verify Node.js/Python versions are compatible

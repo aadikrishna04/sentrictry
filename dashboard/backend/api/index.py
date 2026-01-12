@@ -4,15 +4,18 @@ This file handles all API routes for the Sentric backend
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path so we can import main
-sys.path.insert(0, str(Path(__file__).parent.parent))
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
+
+# Change to backend directory so relative imports work
+import os
+os.chdir(backend_dir)
 
 # Import the FastAPI app
 from main import app
 
-# Export the app for Vercel
-# Vercel will automatically detect and use the FastAPI app
-__all__ = ["app"]
+# Vercel expects the app to be available as 'app'
+# This is the entry point for all routes
