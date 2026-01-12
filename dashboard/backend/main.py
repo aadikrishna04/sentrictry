@@ -141,7 +141,7 @@ app = FastAPI(
 # Get allowed origins from environment or use defaults
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
-    "https://app.sentriclabs.com,http://localhost:3000,http://localhost:3001"
+    "https://app.sentriclabs.com,http://localhost:3000,http://localhost:3001",
 ).split(",")
 
 app.add_middleware(
