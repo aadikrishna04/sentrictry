@@ -29,6 +29,8 @@ function ApiKeysContent() {
   const [selectedProject, setSelectedProject] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -96,13 +98,25 @@ function ApiKeysContent() {
   }
 
   async function createKey() {
-    if (!selectedProject) return;
+    if (!selectedProject) {
+      setError("Please select a project");
+      return;
+    }
 
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) {
+      setError("Authentication required. Please log in again.");
+      return;
+    }
+
+    setCreating(true);
+    setError(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/api-keys`, {
+      const url = `${API_URL}/api/api-keys`;
+      console.log("Creating API key at:", url);
+      
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -119,10 +133,25 @@ function ApiKeysContent() {
         setNewKey(data.key);
         setKeyName("");
         setShowCreate(false);
+        setError(null);
         fetchData();
+      } else {
+        const errorText = await res.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { detail: errorText || `HTTP ${res.status}: ${res.statusText}` };
+        }
+        console.error("API error:", res.status, errorData);
+        setError(errorData.detail || `Error: ${res.status} ${res.statusText}`);
       }
     } catch (e) {
       console.error("Failed to create key:", e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      setError(`Network error: ${errorMessage}. Please check that the API is running at ${API_URL}`);
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -235,7 +264,10 @@ function ApiKeysContent() {
           Active Keys
         </h2>
         <button
-          onClick={() => setShowCreate(true)}
+          onClick={() => {
+            setShowCreate(true);
+            setError(null);
+          }}
           className="flex items-center gap-2 bg-white text-background px-5 py-2.5 rounded-xl font-medium transition-all font-serif hover:opacity-90"
         >
           <Plus size={18} />
@@ -278,17 +310,33 @@ function ApiKeysContent() {
                 ))}
               </select>
             </div>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm font-serif">
+                {error}
+              </div>
+            )}
             <div className="flex gap-4 pt-2">
               <button
-                disabled={!selectedProject}
+                disabled={!selectedProject || creating}
                 onClick={createKey}
-                className="flex-1 bg-white text-background py-3.5 rounded-xl font-medium transition-all font-serif hover:opacity-90 active:scale-95 disabled:opacity-50"
+                className="flex-1 bg-white text-background py-3.5 rounded-xl font-medium transition-all font-serif hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Generate Key
+                {creating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  "Generate Key"
+                )}
               </button>
               <button
-                onClick={() => setShowCreate(false)}
-                className="flex-1 bg-white/5 text-textSecondary py-3.5 rounded-xl border border-white/10 hover:text-white transition-all font-serif"
+                onClick={() => {
+                  setShowCreate(false);
+                  setError(null);
+                }}
+                disabled={creating}
+                className="flex-1 bg-white/5 text-textSecondary py-3.5 rounded-xl border border-white/10 hover:text-white transition-all font-serif disabled:opacity-50"
               >
                 Cancel
               </button>
