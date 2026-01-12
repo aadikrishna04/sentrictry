@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 const Navbar: React.FC = () => {
@@ -25,18 +26,18 @@ const Navbar: React.FC = () => {
       <div className="flex items-center justify-between max-w-7xl mx-auto px-6">
         {/* Logo - Serif/Logo Font from Design Spec */}
         <div className="flex items-center gap-2 cursor-pointer group">
-          <a href="/#home" className="flex items-center gap-2">
+          <Link href="/#home" className="flex items-center gap-2">
             <span className="text-3xl font-logo tracking-tight text-white font-bold">
               Sentric
             </span>
-          </a>
+          </Link>
         </div>
 
         {/* Navigation Links */}
         <div className="hidden md:flex items-center gap-8">
-          <a href="/#features" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Features</a>
-          <a href="/#architecture" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Architecture</a>
-          <a href="/docs" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Docs</a>
+          <Link href="/#features" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Features</Link>
+          <Link href="/#architecture" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Architecture</Link>
+          <Link href="/docs" className="text-sm font-medium text-textSecondary hover:text-white transition-colors">Docs</Link>
         </div>
 
         {/* Action Button - Dashboard */}

@@ -5,12 +5,10 @@ import Navbar from "../../components/Navbar";
 import { 
   Book, 
   Code, 
-  Terminal, 
   Zap, 
   Shield, 
   Eye,
   Play,
-  Key,
   ChevronRight,
   Copy,
   Check,
@@ -41,7 +39,7 @@ const DocsPage = () => {
     { id: "laminar", title: "Session Recording", icon: Play },
   ];
 
-  const CodeBlock = ({ code, language = "python", id }: { code: string; language?: string; id: string }) => (
+  const CodeBlock = ({ code, id }: { code: string; id: string }) => (
     <div className="relative group">
       <pre className="bg-surfaceHighlight border border-white/10 rounded-xl p-4 overflow-x-auto text-sm font-mono">
         <code className="text-gray-300">{code}</code>
@@ -210,7 +208,7 @@ const DocsPage = () => {
                     <h3 className="text-xl font-bold text-white mb-3 font-sans">Generate an API Key</h3>
                     <p className="text-textSecondary font-sans">
                       Go to <strong className="text-white">API Keys</strong> and generate a key for your project. 
-                      Store it securely — you'll need it to authenticate the SDK.
+                      Store it securely — you&apos;ll need it to authenticate the SDK.
                     </p>
                   </div>
 

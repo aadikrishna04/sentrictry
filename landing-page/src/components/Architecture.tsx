@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowDown, Laptop, Shield, Server, Layout } from 'lucide-react';
+import { ArrowDown, Laptop, Server, Layout } from 'lucide-react';
 
 const Architecture: React.FC = () => {
   return (

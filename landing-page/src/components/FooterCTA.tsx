@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const FooterCTA: React.FC = () => {
@@ -30,9 +30,9 @@ const FooterCTA: React.FC = () => {
 
             setSuccess(true);
             setEmail("");
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error submitting email:", err);
-            if (err.code === "23505") { // Unique violation
+            if (err && typeof err === 'object' && 'code' in err && err.code === "23505") { // Unique violation
                  setSuccess(true); // Treat duplicate as success to not leak info
             } else {
                 setError("Something went wrong. Please try again.");
@@ -97,8 +97,8 @@ const FooterCTA: React.FC = () => {
                  ) : (
                     <div className="flex flex-col items-center justify-center py-8 text-center gap-3">
                         <CheckCircle2 size={48} className="text-green-400 mb-2"/>
-                        <h3 className="text-xl font-medium text-white">You're on the list!</h3>
-                        <p className="text-sm text-textSecondary">We'll be in touch shortly.</p>
+                        <h3 className="text-xl font-medium text-white">You&apos;re on the list!</h3>
+                        <p className="text-sm text-textSecondary">We&apos;ll be in touch shortly.</p>
                         <button onClick={() => setSuccess(false)} className="text-xs text-accent hover:underline mt-2">Add another email</button>
                     </div>
                  )}

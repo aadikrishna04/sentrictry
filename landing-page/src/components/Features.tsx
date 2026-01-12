@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Eye, Activity, Lock, AlertTriangle, Cpu } from 'lucide-react';
+import { Shield, Eye, AlertTriangle, Cpu } from 'lucide-react';
 
 const Features: React.FC = () => {
   const features = [
